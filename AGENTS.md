@@ -82,6 +82,8 @@ lib/
   tool-preset-preference.ts  browser-persisted default for fresh sessions
   types.ts            shared TypeScript types
   normalize.ts        normalizeToolCalls() — field name mismatch between file format and our types
+  personalization.ts pure personalization preferences, limits, and validation
+  personalization-storage.ts IndexedDB storage for user-selected image/audio blobs
   worktree.ts         project/worktree resolution and git worktree operations
 
 components/
@@ -94,6 +96,7 @@ components/
   ChatMinimap.tsx     scroll minimap alongside the message list
   MarkdownBody.tsx    markdown renderer
   ModelsConfig.tsx    modal for editing models.json (opened from sidebar bottom)
+  PersonalizationConfig.tsx local wallpaper and completion-sound settings
   PluginsConfig.tsx   modal for installed package plugins
   SkillsConfig.tsx    modal for loaded/search/installable skills
   FileExplorer.tsx    file tree inside sidebar
@@ -103,7 +106,8 @@ components/
 
 hooks/
   useAgentSession.ts  messages + streaming + SSE + fork/navigate/reconciliation logic
-  useAudio.ts         completion sound + browser AudioContext unlock
+  useAudio.ts         completion sound selection/upload + browser AudioContext unlock
+  useBackground.ts    wallpaper preferences + DOM theme integration
   useDragDrop.ts      shared drag/drop state
   useIsMobile.ts      responsive breakpoint hook
   useTheme.ts         theme state
@@ -183,9 +187,11 @@ Newer pi emits `compaction_start` / `compaction_end`; older versions emitted `au
 - API-key routes store and remove keys through `AuthStorage`. Status endpoints must never return the raw key.
 - The model test route is `app/api/models-config/test/route.ts`; `app/api/models/test/` is not a real route.
 
-### Completion sound
-- `hooks/useAudio.ts` stores the toggle in `localStorage` as `pi-sound-enabled` and reuses one `AudioContext`.
-- Browser autoplay policy means sound must be unlocked from a user gesture; `ChatInput` calls the unlock hook from interactive controls, and `ChatWindow` plays the tone from `onAgentEnd`.
+### Personalization and completion sound
+- `hooks/useBackground.ts` applies the selected wallpaper through root CSS variables. Keep wallpaper surfaces theme-aware so text remains readable in both themes.
+- Image/audio blobs live in the `pi-web-personalization` IndexedDB database; `localStorage` holds only small preferences and asset display names. User assets must not be added to the repository.
+- `hooks/useAudio.ts` keeps the existing `pi-sound-enabled` toggle compatible and reuses one `AudioContext` for built-in and decoded custom sounds.
+- Browser autoplay policy means sound must be unlocked from a user gesture; `ChatInput` and `PersonalizationConfig` call the unlock hook, while `ChatWindow` plays the selected sound from `onAgentEnd`.
 
 ### Exported session HTML
 - `/api/sessions/[id]/export` delegates to pi's export helper, then patches recursive tree helpers in the generated HTML to iterative versions so very deep linear sessions do not overflow the browser call stack.

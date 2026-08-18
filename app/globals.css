@@ -52,6 +52,39 @@ html.dark {
   --bg-subtle: rgba(255,255,255,0.04);
 }
 
+/* User-selected wallpaper. Surface colors remain theme-aware while becoming
+   translucent enough for the image to show without sacrificing readability. */
+html.has-custom-background {
+  --bg: rgb(255 255 255 / var(--app-surface-alpha, 0.6));
+  --bg-panel: rgb(245 245 245 / var(--app-panel-alpha, 0.7));
+  --bg-hover: rgb(238 238 238 / var(--app-panel-alpha, 0.7));
+  --bg-selected: rgb(232 232 232 / var(--app-panel-alpha, 0.7));
+  --user-bg: rgb(239 246 255 / var(--app-panel-alpha, 0.7));
+  --assistant-bg: rgb(255 255 255 / var(--app-surface-alpha, 0.6));
+  --tool-bg: rgb(249 250 251 / var(--app-panel-alpha, 0.7));
+  background-color: #dfe3e8;
+  background-image: var(--app-background-image);
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: var(--app-background-size, cover);
+  background-attachment: fixed;
+}
+
+html.dark.has-custom-background {
+  --bg: rgb(26 26 26 / var(--app-surface-alpha, 0.6));
+  --bg-panel: rgb(36 36 36 / var(--app-panel-alpha, 0.7));
+  --bg-hover: rgb(46 46 46 / var(--app-panel-alpha, 0.7));
+  --bg-selected: rgb(56 56 56 / var(--app-panel-alpha, 0.7));
+  --user-bg: rgb(30 41 59 / var(--app-panel-alpha, 0.7));
+  --assistant-bg: rgb(26 26 26 / var(--app-surface-alpha, 0.6));
+  --tool-bg: rgb(31 41 55 / var(--app-panel-alpha, 0.7));
+  background-color: #111827;
+}
+
+html.has-custom-background body {
+  background: transparent;
+}
+
 .catppuccin-file-icon {
   display: block;
   flex-shrink: 0;
