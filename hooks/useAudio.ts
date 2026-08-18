@@ -19,6 +19,7 @@ import {
   loadPersonalizationAsset,
   savePersonalizationAsset,
 } from "@/lib/personalization-storage";
+import { decodePcmWav } from "@/lib/wav-decoder";
 
 export type SoundUploadError = "invalid-type" | "too-large" | "too-long" | "decode" | "storage";
 
@@ -124,6 +125,23 @@ function playBuffer(ctx: AudioContext, buffer: AudioBuffer, volume: number): voi
   source.start();
 }
 
+async function decodeAudioDataWithPcmFallback(ctx: AudioContext, arrayBuffer: ArrayBuffer): Promise<AudioBuffer> {
+  try {
+    // decodeAudioData may detach its input, so keep the original buffer for the
+    // manual PCM fallback.
+    return await ctx.decodeAudioData(arrayBuffer.slice(0));
+  } catch (nativeError) {
+    const decoded = decodePcmWav(arrayBuffer);
+    if (!decoded) throw nativeError;
+
+    const audioBuffer = ctx.createBuffer(decoded.channels, decoded.frames, decoded.sampleRate);
+    decoded.channelData.forEach((channel, index) => {
+      audioBuffer.getChannelData(index).set(channel);
+    });
+    return audioBuffer;
+  }
+}
+
 export function useAudio(): AudioController {
   const [enabled, setEnabled] = useState<boolean>(() => readBooleanPreference("pi-sound-enabled", true));
   const [soundPreset, setSoundPresetState] = useState<SoundPreset>(() => (
@@ -178,7 +196,7 @@ export function useAudio(): AudioController {
 
         const ctx = getCtx();
         if (!ctx) return;
-        const buffer = await ctx.decodeAudioData(await stored.blob.arrayBuffer());
+        const buffer = await decodeAudioDataWithPcmFallback(ctx, await stored.blob.arrayBuffer());
         if (operation !== customOperationRef.current) return;
         customBufferRef.current = buffer;
         setCustomSoundReady(true);
@@ -262,7 +280,7 @@ export function useAudio(): AudioController {
 
     let buffer: AudioBuffer;
     try {
-      buffer = await ctx.decodeAudioData(await file.arrayBuffer());
+      buffer = await decodeAudioDataWithPcmFallback(ctx, await file.arrayBuffer());
     } catch {
       throw new Error("decode" satisfies SoundUploadError);
     }

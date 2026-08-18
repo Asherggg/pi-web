@@ -84,6 +84,7 @@ lib/
   normalize.ts        normalizeToolCalls() — field name mismatch between file format and our types
   personalization.ts pure personalization preferences, limits, and validation
   personalization-storage.ts IndexedDB storage for user-selected image/audio blobs
+  wav-decoder.ts      PCM WAV fallback for browsers that reject legacy encodings
   worktree.ts         project/worktree resolution and git worktree operations
 
 components/
@@ -190,7 +191,7 @@ Newer pi emits `compaction_start` / `compaction_end`; older versions emitted `au
 ### Personalization and completion sound
 - `hooks/useBackground.ts` applies the selected wallpaper through root CSS variables. Keep wallpaper surfaces theme-aware so text remains readable in both themes.
 - Image/audio blobs live in the `pi-web-personalization` IndexedDB database; `localStorage` holds only small preferences and asset display names. User assets must not be added to the repository.
-- `hooks/useAudio.ts` keeps the existing `pi-sound-enabled` toggle compatible and reuses one `AudioContext` for built-in and decoded custom sounds.
+- `hooks/useAudio.ts` keeps the existing `pi-sound-enabled` toggle compatible and reuses one `AudioContext` for built-in and decoded custom sounds. Standard PCM WAV files also use `lib/wav-decoder.ts` when a browser rejects native decoding.
 - Browser autoplay policy means sound must be unlocked from a user gesture; `ChatInput` and `PersonalizationConfig` call the unlock hook, while `ChatWindow` plays the selected sound from `onAgentEnd`.
 
 ### Exported session HTML
