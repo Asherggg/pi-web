@@ -98,6 +98,7 @@ components/
   MarkdownBody.tsx    markdown renderer
   ModelsConfig.tsx    modal for editing models.json (opened from sidebar bottom)
   PersonalizationConfig.tsx local wallpaper and completion-sound settings
+  NextDevToolsZh.tsx  development-only Chinese labels for Next.js dev tools
   PluginsConfig.tsx   modal for installed package plugins
   SkillsConfig.tsx    modal for loaded/search/installable skills
   FileExplorer.tsx    file tree inside sidebar
