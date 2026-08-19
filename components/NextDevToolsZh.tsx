@@ -3,6 +3,9 @@
 import { useEffect } from "react";
 
 const TRANSLATIONS: Readonly<Record<string, string>> = {
+  "Open Next.js Dev Tools": "打开 Next.js 开发工具",
+  "Close Next.js Dev Tools": "关闭 Next.js 开发工具",
+  "Next.js Dev Tools Items": "Next.js 开发工具菜单项",
   "Rendering...": "渲染中…",
   "Rendering": "渲染中",
   "Rendering (cold cache)": "渲染中（冷缓存）",
@@ -68,12 +71,13 @@ type TranslatableElement = Element & {
   setAttribute: (name: string, value: string) => void;
 };
 
-function translateValue(value: string): string {
-  const leading = value.match(/^\s*/)?.[0] ?? "";
-  const trailing = value.match(/\s*$/)?.[0] ?? "";
-  const contentEnd = trailing.length === 0 ? value.length : value.length - trailing.length;
-  const trimmed = value.slice(leading.length, contentEnd);
-  return `${leading}${TRANSLATIONS[trimmed] ?? trimmed}${trailing}`;
+export function translateNextDevToolsValue(value: string): string {
+  const trimmed = value.trim();
+  const translated = TRANSLATIONS[trimmed];
+  if (!translated) return value;
+
+  const contentStart = value.indexOf(trimmed);
+  return `${value.slice(0, contentStart)}${translated}${value.slice(contentStart + trimmed.length)}`;
 }
 
 function translateShadowTree(root: ShadowRoot): void {
@@ -86,8 +90,9 @@ function translateShadowTree(root: ShadowRoot): void {
   }
 
   for (const textNode of textNodes) {
+    if (textNode.parentElement?.closest("style, script")) continue;
     const current = textNode.nodeValue ?? "";
-    const translated = translateValue(current);
+    const translated = translateNextDevToolsValue(current);
     if (translated !== current) textNode.nodeValue = translated;
   }
 
@@ -95,7 +100,7 @@ function translateShadowTree(root: ShadowRoot): void {
     for (const attribute of TRANSLATABLE_ATTRIBUTES) {
       const current = element.getAttribute(attribute);
       if (!current) continue;
-      const translated = translateValue(current);
+      const translated = translateNextDevToolsValue(current);
       if (translated !== current) element.setAttribute(attribute, translated);
     }
   }
