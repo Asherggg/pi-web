@@ -4,7 +4,11 @@ import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 
 import { useI18n } from "@/hooks/useI18n";
 import type { BackgroundController, BackgroundUploadError } from "@/hooks/useBackground";
 import type { AudioController, SoundUploadError } from "@/hooks/useAudio";
-import type { SoundPreset } from "@/lib/personalization";
+import {
+  MAX_BACKGROUND_STRENGTH,
+  MIN_BACKGROUND_STRENGTH,
+  type SoundPreset,
+} from "@/lib/personalization";
 
 interface Props {
   background: BackgroundController;
@@ -355,8 +359,8 @@ export function PersonalizationConfig({ background, audio, onClose }: Props) {
                   </label>
                   <input
                     type="range"
-                    min="20"
-                    max="80"
+                    min={MIN_BACKGROUND_STRENGTH * 100}
+                    max={MAX_BACKGROUND_STRENGTH * 100}
                     step="1"
                     value={Math.round(background.backgroundStrength * 100)}
                     aria-label={t("personalization.imageVisibility")}

@@ -7,6 +7,8 @@ export const BACKGROUND_ASSET_KEY = "background" as const;
 export const COMPLETION_SOUND_ASSET_KEY = "completion-sound" as const;
 
 export const MAX_BACKGROUND_FILE_BYTES = 20 * 1024 * 1024;
+export const MIN_BACKGROUND_STRENGTH = 0.01;
+export const MAX_BACKGROUND_STRENGTH = 0.8;
 export const MAX_SOUND_FILE_BYTES = 10 * 1024 * 1024;
 export const MAX_CUSTOM_SOUND_SECONDS = 15;
 
@@ -43,7 +45,7 @@ export function parseBackgroundPreferences(raw: string | null): BackgroundPrefer
   try {
     const parsed = JSON.parse(raw) as Partial<BackgroundPreferences>;
     const strength = typeof parsed.strength === "number" && Number.isFinite(parsed.strength)
-      ? clampNumber(parsed.strength, 0.2, 0.8)
+      ? clampNumber(parsed.strength, MIN_BACKGROUND_STRENGTH, MAX_BACKGROUND_STRENGTH)
       : DEFAULT_BACKGROUND_PREFERENCES.strength;
     const fit = parsed.fit === "contain" || parsed.fit === "cover"
       ? parsed.fit
@@ -72,11 +74,17 @@ export function getBackgroundSurfaceAlphas(strength: number): {
   surface: number;
   panel: number;
 } {
-  const normalized = clampNumber(strength, 0.2, 0.8);
-  const surface = clampNumber(0.92 - normalized * 0.58, 0.42, 0.82);
+  const normalized = clampNumber(strength, MIN_BACKGROUND_STRENGTH, MAX_BACKGROUND_STRENGTH);
+  const legacyFloor = 0.2;
+  const legacyFloorSurface = 0.92 - legacyFloor * 0.58;
+  const surface = normalized < legacyFloor
+    ? 0.99 - ((normalized - MIN_BACKGROUND_STRENGTH) / (legacyFloor - MIN_BACKGROUND_STRENGTH))
+      * (0.99 - legacyFloorSurface)
+    : 0.92 - normalized * 0.58;
+  const clampedSurface = clampNumber(surface, 0.42, 0.99);
   return {
-    surface,
-    panel: clampNumber(surface + 0.1, 0.5, 0.92),
+    surface: clampedSurface,
+    panel: clampNumber(clampedSurface + 0.1, 0.5, 0.99),
   };
 }
 

@@ -6,6 +6,8 @@ import {
   BACKGROUND_PREFERENCES_KEY,
   DEFAULT_BACKGROUND_PREFERENCES,
   MAX_BACKGROUND_FILE_BYTES,
+  MAX_BACKGROUND_STRENGTH,
+  MIN_BACKGROUND_STRENGTH,
   getBackgroundSurfaceAlphas,
   isImageFile,
   parseBackgroundPreferences,
@@ -162,7 +164,7 @@ export function useBackground(): BackgroundController {
   const setBackgroundStrength = useCallback((strength: number) => {
     setPreferences((current) => ({
       ...current,
-      strength: Math.min(0.8, Math.max(0.2, strength)),
+      strength: Math.min(MAX_BACKGROUND_STRENGTH, Math.max(MIN_BACKGROUND_STRENGTH, strength)),
     }));
   }, []);
 
