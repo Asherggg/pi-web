@@ -1,0 +1,485 @@
+.overlay {
+  position: fixed;
+  z-index: 1050;
+  inset: 0;
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  grid-template-rows: calc(44px + env(safe-area-inset-top)) minmax(0, 1fr);
+  width: 100%;
+  height: var(--app-viewport-height, 100dvh);
+  overflow: hidden;
+  background: transparent;
+  color: var(--text);
+}
+
+.sidebar {
+  grid-row: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: calc(8px + env(safe-area-inset-top)) 10px env(safe-area-inset-bottom);
+  border-right: 1px solid var(--border);
+  background: var(--bg-panel);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  padding: 0 6px;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.brand svg {
+  color: var(--accent);
+}
+
+.projectLabel {
+  margin: 15px 6px 7px;
+  color: var(--text-dim);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.projectName {
+  margin: 0 4px 14px;
+  padding: 8px 9px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg);
+  color: var(--text-muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sessionHeading {
+  margin: 0 6px 6px;
+  color: var(--text-dim);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.sessionList {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.sessionRow {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) auto;
+  align-items: center;
+  min-height: 34px;
+  gap: 7px;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  text-align: left;
+}
+
+.sessionRow:hover,
+.sessionRowActive {
+  background: var(--bg-selected);
+  color: var(--text);
+}
+
+.sessionDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-dim);
+}
+
+.sessionRowActive .sessionDot {
+  background: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
+.sessionText {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sessionBranch {
+  color: var(--text-dim);
+  font-size: 9px;
+}
+
+.topbar {
+  grid-column: 2;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+  gap: 12px;
+  padding: env(safe-area-inset-top) max(12px, env(safe-area-inset-right)) 0 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-panel);
+}
+
+.viewSwitch {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+}
+
+.viewSwitch button {
+  height: 28px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.viewSwitch .activeSwitch {
+  background: var(--bg-selected);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 4px;
+}
+
+.controlButton,
+.closeButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 30px;
+  min-width: 30px;
+  gap: 5px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.controlButton:hover,
+.closeButton:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.zoomLabel {
+  width: 42px;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-align: center;
+}
+
+.stage {
+  grid-column: 2;
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: transparent;
+}
+
+.viewport {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background-color: color-mix(in srgb, var(--bg) 82%, transparent);
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--border) 35%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--border) 35%, transparent) 1px, transparent 1px);
+  background-size: 24px 24px;
+  cursor: grab;
+  touch-action: none;
+}
+
+.viewportPanning {
+  cursor: grabbing;
+  user-select: none;
+}
+
+.canvas {
+  position: absolute;
+  inset: 0;
+  transform-origin: 0 0;
+}
+
+.connectors {
+  position: absolute;
+  inset: 0;
+  width: 1px;
+  height: 1px;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.connector {
+  fill: none;
+  stroke: color-mix(in srgb, var(--text-dim) 58%, var(--border));
+  stroke-width: 1.5;
+}
+
+.connectorBranch {
+  stroke: color-mix(in srgb, var(--accent) 70%, var(--border));
+}
+
+.cards {
+  position: absolute;
+  inset: 0;
+}
+
+.card {
+  position: absolute;
+  display: grid;
+  width: 310px;
+  height: 276px;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  overflow: visible;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--bg-panel) 96%, transparent);
+  box-shadow: 0 3px 11px rgba(0, 0, 0, 0.08);
+  color: var(--text);
+}
+
+.card:hover {
+  border-color: color-mix(in srgb, var(--text-muted) 60%, var(--border));
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.13);
+}
+
+.cardActive {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent), 0 8px 20px rgba(0, 0, 0, 0.13);
+}
+
+.dragHandle {
+  position: absolute;
+  top: -8px;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 15px;
+  min-height: 15px;
+  padding: 0;
+  transform: translateX(-50%);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-panel);
+  color: var(--text-dim);
+  cursor: grab;
+}
+
+.cardHead {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 8px;
+  padding: 15px 12px 8px;
+}
+
+.topicDot {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.question {
+  min-width: 0;
+  display: -webkit-box;
+  max-height: 34px;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.4;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.meta {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 12px 8px;
+  color: var(--text-dim);
+  font-size: 9px;
+}
+
+.metaBranch {
+  color: var(--accent);
+}
+
+.answer {
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 2px 12px 10px;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.55;
+  user-select: text;
+}
+
+.answer :global(.markdown-body) {
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.emptyAnswer {
+  margin: 4px 0;
+  color: var(--text-dim);
+  font-style: italic;
+}
+
+.errorAnswer {
+  color: #ef4444;
+}
+
+.cardFooter {
+  display: flex;
+  justify-content: flex-end;
+  gap: 3px;
+  padding: 6px 7px;
+  border-top: 1px solid var(--border);
+}
+
+.cardFooter button {
+  min-height: 26px;
+  padding: 0 7px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 10px;
+}
+
+.cardFooter button:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.cardFooter button:disabled {
+  cursor: wait;
+  opacity: 0.5;
+}
+
+.loading,
+.empty,
+.error {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 30px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.error {
+  color: #ef4444;
+}
+
+.notice {
+  position: absolute;
+  z-index: 4;
+  top: 10px;
+  left: 50%;
+  max-width: min(560px, calc(100% - 24px));
+  padding: 7px 10px;
+  transform: translateX(-50%);
+  border: 1px solid color-mix(in srgb, #d97706 35%, var(--border));
+  border-radius: 5px;
+  background: color-mix(in srgb, #d97706 10%, var(--bg-panel));
+  color: #d97706;
+  font-size: 10px;
+}
+
+@media (max-width: 760px) {
+  .overlay {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    display: none;
+  }
+
+  .topbar,
+  .stage {
+    grid-column: 1;
+  }
+
+  .topbar {
+    padding-left: max(8px, env(safe-area-inset-left));
+  }
+
+  .controlText {
+    display: none;
+  }
+}
+
+@media (max-width: 480px) {
+  .viewSwitch button {
+    padding: 0 7px;
+  }
+
+  .controls {
+    gap: 2px;
+  }
+
+  .controlButton,
+  .closeButton {
+    min-width: 28px;
+    width: 28px;
+    padding: 0;
+  }
+
+  .zoomLabel {
+    width: 34px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card,
+  .controlButton,
+  .closeButton {
+    transition: none;
+  }
+}

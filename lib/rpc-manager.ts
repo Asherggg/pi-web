@@ -172,6 +172,7 @@ export class AgentSessionWrapper {
   private extensionWidgetGenerations = new Map<string, number>();
   private extensionWidgetsResetting = false;
   private pendingPromptCount = 0;
+  private promptAdmissionPendingCount = 0;
   private promptAdmissionTail: Promise<void> = Promise.resolve();
   private extensionsBound = false;
   private extensionBindingPromise: Promise<void> | null = null;
@@ -210,7 +211,7 @@ export class AgentSessionWrapper {
   }
 
   isRunning(): boolean {
-    return this._alive && (this.pendingPromptCount > 0 || this.inner.isStreaming || this.inner.isCompacting || this.inner.isBashRunning);
+    return this._alive && (this.pendingPromptCount > 0 || this.promptAdmissionPendingCount > 0 || this.inner.isStreaming || this.inner.isCompacting || this.inner.isBashRunning);
   }
 
   start(): void {
@@ -401,11 +402,22 @@ export class AgentSessionWrapper {
   async send(command: Record<string, unknown>): Promise<unknown> {
     this.resetIdleTimer();
     const type = command.type as string;
-    if (this.shouldWaitForExtensions(type)) await this.waitForExtensionsBound();
+    const promptCommand = type === "prompt";
+    let promptAdmissionTransferred = false;
+    if (promptCommand) {
+      this.promptAdmissionPendingCount += 1;
+      notifyRunningChange();
+    }
+    try {
+      if (this.shouldWaitForExtensions(type)) await this.waitForExtensionsBound();
 
-    if (type === "prompt" || type === "steer" || type === "follow_up") {
+      if (type === "prompt" || type === "steer" || type === "follow_up") {
       const imageError = validateAgentImages(command.images);
       if (imageError) throw new Error(imageError);
+    }
+
+    if (type === "fork" || type === "fork_after" || type === "navigate_tree") {
+      if (this.isRunning()) throw new Error("Cannot mutate the session while it is running");
     }
 
     switch (type) {
@@ -446,7 +458,9 @@ export class AgentSessionWrapper {
             notifyRunningChange();
           };
 
+          this.promptAdmissionPendingCount = Math.max(0, this.promptAdmissionPendingCount - 1);
           this.pendingPromptCount += 1;
+          promptAdmissionTransferred = true;
           notifyRunningChange();
           let prompt: Promise<void>;
           try {
@@ -545,9 +559,10 @@ export class AgentSessionWrapper {
         return { id: model.id, provider: model.provider };
       }
 
-      case "fork": {
-        if (this.inner.isBashRunning) {
-          throw new Error("Cannot fork while a shell command is running");
+      case "fork":
+      case "fork_after": {
+        if (this.isRunning()) {
+          throw new Error("Cannot fork while the session is running");
         }
         const entryId = command.entryId as string;
         const sessionManager = this.inner.sessionManager;
@@ -562,7 +577,8 @@ export class AgentSessionWrapper {
         const sessionDir = sessionManager.getSessionDir();
         let newSessionFile: string;
 
-        if (!entry.parentId) {
+        const branchFromEntryId = command.type === "fork_after" ? entry.id : entry.parentId;
+        if (!branchFromEntryId) {
           // Fork before the first message: create an empty session linked to this one
           const newManager = SessionManager.create(sessionManager.getCwd(), sessionDir);
           newManager.newSession({ parentSession: currentSessionFile });
@@ -570,7 +586,7 @@ export class AgentSessionWrapper {
         } else {
           // Fork after some history: copy path up to (but not including) the fork point
           const sourceManager = SessionManager.open(currentSessionFile, sessionDir);
-          const forkedPath = sourceManager.createBranchedSession(entry.parentId);
+          const forkedPath = sourceManager.createBranchedSession(branchFromEntryId);
           if (!forkedPath) throw new Error("Failed to create forked session");
           newSessionFile = forkedPath;
         }
@@ -583,8 +599,8 @@ export class AgentSessionWrapper {
       }
 
       case "navigate_tree": {
-        if (this.inner.isBashRunning) {
-          throw new Error("Cannot navigate while a shell command is running");
+        if (this.isRunning()) {
+          throw new Error("Cannot navigate while the session is running");
         }
         const result = await this.inner.navigateTree(command.targetId as string, {});
         return { cancelled: result.cancelled };
@@ -769,6 +785,12 @@ export class AgentSessionWrapper {
 
       default:
         throw new Error(`Unsupported command: ${type}`);
+    }
+    } finally {
+      if (promptCommand && !promptAdmissionTransferred) {
+        this.promptAdmissionPendingCount = Math.max(0, this.promptAdmissionPendingCount - 1);
+        notifyRunningChange();
+      }
     }
   }
 

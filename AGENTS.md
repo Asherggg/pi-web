@@ -84,6 +84,8 @@ lib/
   normalize.ts        normalizeToolCalls() — field name mismatch between file format and our types
   personalization.ts pure personalization preferences, limits, and validation
   personalization-storage.ts IndexedDB storage for user-selected image/audio blobs
+  session-map.ts      bounded workspace/session/turn graph projection for the canvas
+  session-map-layout.ts deterministic canvas node layout and SVG connector geometry
   wav-decoder.ts      PCM WAV fallback for browsers that reject legacy encodings
   worktree.ts         project/worktree resolution and git worktree operations
 
@@ -98,6 +100,7 @@ components/
   MarkdownBody.tsx    markdown renderer
   ModelsConfig.tsx    modal for editing models.json (opened from sidebar bottom)
   PersonalizationConfig.tsx local wallpaper and completion-sound settings
+  SessionMap.tsx      workspace-level conversation canvas with pan/zoom/drag
   NextDevToolsZh.tsx  development-only Chinese labels for Next.js dev tools
   PluginsConfig.tsx   modal for installed package plugins
   SkillsConfig.tsx    modal for loaded/search/installable skills
@@ -195,6 +198,12 @@ Newer pi emits `compaction_start` / `compaction_end`; older versions emitted `au
 - `hooks/useAudio.ts` keeps the existing `pi-sound-enabled` toggle compatible and reuses one `AudioContext` for built-in and decoded custom sounds. Standard PCM WAV files also use `lib/wav-decoder.ts` when a browser rejects native decoding.
 - Browser autoplay policy means sound must be unlocked from a user gesture; `ChatInput` and `PersonalizationConfig` call the unlock hook, while `ChatWindow` plays the selected sound from `onAgentEnd`.
 
+### Session map
+- The top-bar **Session map** opens `components/SessionMap.tsx` as a full-screen alternate workspace. It reads one bounded `/api/session-map?sessionId=` projection and keeps Pi's JSONL files and runtime wrappers authoritative.
+- Map nodes represent one user turn plus its latest assistant answer. Node lineage comes from entry `parentId`; cross-file forks deduplicate inherited entry IDs under the root session family. Canvas coordinates are presentation metadata only and live in browser `localStorage`.
+- `fork_after` creates a new independent session including the selected card's answer. Both `fork` and `navigate_tree` reject every running session state before mutating runtime/session state.
+- Keep projection bounds effective before session files are opened. The active session and its recent tail must survive node truncation, and map payloads must omit thinking text, images, and tool-result bodies.
+
 ### Exported session HTML
 - `/api/sessions/[id]/export` delegates to pi's export helper, then patches recursive tree helpers in the generated HTML to iterative versions so very deep linear sessions do not overflow the browser call stack.
 
@@ -224,3 +233,13 @@ Location: `~/.pi/agent/sessions/<encoded-cwd>/<timestamp>_<uuid>.jsonl`
 --accent --user-bg --tool-bg
 --font-mono
 ```
+
+<!-- BEGIN:nextjs-agent-rules -->
+
+# This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
+<!-- END:nextjs-agent-rules -->

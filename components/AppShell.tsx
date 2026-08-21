@@ -4,6 +4,7 @@ import { useState, useCallback, useRef, useEffect, useLayoutEffect } from "react
 import { useRouter, useSearchParams } from "next/navigation";
 import { useGlobalKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { SessionSidebar } from "./SessionSidebar";
+import { SessionMap } from "./SessionMap";
 import { ChatWindow } from "./ChatWindow";
 import { FileViewer } from "./FileViewer";
 import { TabBar, type Tab } from "./TabBar";
@@ -20,6 +21,7 @@ import { useIsMobile } from "@/hooks/useIsMobile";
 import { useViewportHeight } from "@/hooks/useViewportHeight";
 import { useResizablePanel } from "@/hooks/useResizablePanel";
 import { useAudio } from "@/hooks/useAudio";
+import { sendAgentCommand } from "@/lib/agent-client";
 import { useBackground } from "@/hooks/useBackground";
 import { copyText } from "@/lib/clipboard";
 import { getFileName } from "@/lib/file-paths";
@@ -107,6 +109,7 @@ export function AppShell() {
   const [skillsConfigOpen, setSkillsConfigOpen] = useState(false);
   const [pluginsConfigOpen, setPluginsConfigOpen] = useState(false);
   const [personalizationOpen, setPersonalizationOpen] = useState(false);
+  const [sessionMapOpen, setSessionMapOpen] = useState(false);
   const [projectTrust, setProjectTrust] = useState<ProjectTrustStatus | null>(null);
   const [projectTrustDialogOpen, setProjectTrustDialogOpen] = useState(false);
   const [projectTrustBusy, setProjectTrustBusy] = useState(false);
@@ -200,6 +203,14 @@ export function AppShell() {
   const handleBranchLeafChange = useCallback((leafId: string | null) => {
     branchLeafChangeFnRef.current?.(leafId);
   }, []);
+
+  const handleOpenSessionMap = useCallback(() => {
+    if (!selectedSession || selectedSession.transient) return;
+    setActiveTopPanel(null);
+    setMobileToolbarMoreOpen(false);
+    if (isMobile) setSidebarOpen(false);
+    setSessionMapOpen(true);
+  }, [isMobile, selectedSession]);
 
   const [systemPrompt, setSystemPrompt] = useState<string | null>(null);
   const [systemPromptLoading, setSystemPromptLoading] = useState(false);
@@ -764,6 +775,37 @@ export function AppShell() {
     router.replace(`?session=${encodeURIComponent(newSessionId)}`, { scroll: false });
   }, [invalidateWorkspaceRestore, router, hydrateSelectedSession]);
 
+  const handleSessionMapActivate = useCallback(async (
+    session: SessionInfo,
+    entryId: string,
+    openChat: boolean,
+  ) => {
+    if (entryId) {
+      const result = await sendAgentCommand<{ cancelled?: boolean }>(session.id, {
+        type: "navigate_tree",
+        targetId: entryId,
+      });
+      if (result?.cancelled) throw new Error("Pi 取消了这次会话节点切换");
+    }
+    if (activeSessionIdRef.current !== session.id) {
+      handleSelectSession(session);
+    } else if (entryId && branchLeafChangeFnRef.current) {
+      branchLeafChangeFnRef.current(entryId);
+    }
+    if (openChat) setSessionMapOpen(false);
+  }, [handleSelectSession]);
+
+  const handleSessionMapFork = useCallback(async (session: SessionInfo, entryId: string) => {
+    const result = await sendAgentCommand<{ cancelled?: boolean; newSessionId?: string }>(session.id, {
+      type: "fork_after",
+      entryId,
+    });
+    if (!result?.cancelled && result?.newSessionId) {
+      setSessionMapOpen(false);
+      handleSessionForked(result.newSessionId);
+    }
+  }, [handleSessionForked]);
+
   const handleInitialRestoreDone = useCallback(() => {
     setInitialSessionRestored(true);
   }, []);
@@ -1021,7 +1063,8 @@ export function AppShell() {
       aria-label={translate(themeLabelKey)}
       style={{
         display: "flex", alignItems: "center", justifyContent: "center",
-        width: TOP_BAR_ICON_BUTTON_SIZE, height: TOP_BAR_ICON_BUTTON_SIZE, padding: 0,
+        width: mobile ? "100%" : TOP_BAR_ICON_BUTTON_SIZE, minWidth: 0,
+        height: TOP_BAR_ICON_BUTTON_SIZE, padding: 0,
         background: "none", border: "none", borderRight: "1px solid var(--border)",
         color: "var(--text-muted)", cursor: "pointer", flexShrink: 0, transition: "color 0.12s",
       }}
@@ -1063,7 +1106,8 @@ export function AppShell() {
       aria-pressed={activeTopPanel === "language"}
       style={{
         display: "flex", alignItems: "center", justifyContent: "center",
-        width: TOP_BAR_ICON_BUTTON_SIZE, height: TOP_BAR_ICON_BUTTON_SIZE, padding: 0,
+        width: mobile ? "100%" : TOP_BAR_ICON_BUTTON_SIZE, minWidth: 0,
+        height: TOP_BAR_ICON_BUTTON_SIZE, padding: 0,
         background: activeTopPanel === "language" ? "var(--bg-selected)" : "none",
         border: "none", borderRight: "1px solid var(--border)",
         color: activeTopPanel === "language" ? "var(--text)" : "var(--text-muted)",
@@ -1153,7 +1197,13 @@ export function AppShell() {
   const renderChatToolbarActions = (mobile: boolean) => {
     if (!mobile && !showChat) return null;
     return (
-      <div style={{ display: "flex", alignItems: "stretch", height: "100%" }}>
+      <div style={{
+        display: mobile ? "grid" : "flex",
+        gridTemplateColumns: mobile ? "repeat(7, minmax(0, 1fr))" : undefined,
+        alignItems: "stretch",
+        width: mobile ? "100%" : undefined,
+        height: "100%",
+      }}>
         <button
           type="button"
           onClick={() => {
@@ -1168,7 +1218,8 @@ export function AppShell() {
             alignItems: "center",
             justifyContent: "center",
             gap: 6,
-            width: mobile ? TOP_BAR_ICON_BUTTON_SIZE : undefined,
+            width: mobile ? "100%" : undefined,
+            minWidth: 0,
             height: "100%",
             padding: mobile ? 0 : "0 12px",
             background: "none",
@@ -1251,7 +1302,8 @@ export function AppShell() {
               aria-label={label}
               style={{
                 display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                width: mobile ? TOP_BAR_ICON_BUTTON_SIZE : undefined,
+                width: mobile ? "100%" : undefined,
+                minWidth: 0,
                 height: "100%", padding: mobile ? 0 : "0 12px",
                 background: "none", border: "none",
                 borderTop: "2px solid transparent",
@@ -1302,7 +1354,7 @@ export function AppShell() {
             aria-pressed={activeTopPanel === "branches"}
             style={{
               display: "flex", alignItems: "center", justifyContent: "center",
-              width: TOP_BAR_ICON_BUTTON_SIZE, height: "100%", padding: 0,
+              width: "100%", minWidth: 0, height: "100%", padding: 0,
               background: activeTopPanel === "branches" ? "var(--bg-selected)" : "none",
               border: "none",
               borderTop: activeTopPanel === "branches" ? "2px solid var(--accent)" : "2px solid transparent",
@@ -1341,7 +1393,8 @@ export function AppShell() {
           aria-pressed={activeTopPanel === "system"}
           style={{
             display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-            width: mobile ? TOP_BAR_ICON_BUTTON_SIZE : undefined,
+            width: mobile ? "100%" : undefined,
+            minWidth: 0,
             height: "100%", padding: mobile ? 0 : "0 12px",
             background: activeTopPanel === "system" ? "var(--bg-selected)" : "none",
             border: "none",
@@ -1368,6 +1421,39 @@ export function AppShell() {
             <line x1="8" y1="17" x2="13" y2="17" />
           </svg>
           {!mobile && <span>{translate("system.label")}</span>}
+        </button>
+        <button
+          type="button"
+          onClick={handleOpenSessionMap}
+          disabled={!selectedSession || selectedSession.transient}
+          title={translate("sessionMap.title")}
+          aria-label={translate("sessionMap.title")}
+          style={{
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+            width: mobile ? "100%" : undefined,
+            minWidth: 0,
+            height: "100%", padding: mobile ? 0 : "0 12px",
+            background: "none", border: "none",
+            borderTop: "2px solid transparent",
+            borderRight: "1px solid var(--border)",
+            cursor: !selectedSession || selectedSession.transient ? "not-allowed" : "pointer",
+            color: !selectedSession || selectedSession.transient ? "var(--text-dim)" : "var(--text-muted)",
+            opacity: !selectedSession || selectedSession.transient ? 0.45 : 1,
+            fontSize: 11, whiteSpace: "nowrap", transition: "color 0.1s, background 0.1s",
+          }}
+          onMouseEnter={(event) => {
+            if (selectedSession && !selectedSession.transient) event.currentTarget.style.color = "var(--text)";
+          }}
+          onMouseLeave={(event) => {
+            event.currentTarget.style.color = selectedSession && !selectedSession.transient ? "var(--text-muted)" : "var(--text-dim)";
+          }}
+          data-mobile-toolbar-action={mobile ? "session-map" : undefined}
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <circle cx="5" cy="6" r="2" /><circle cx="19" cy="6" r="2" /><circle cx="12" cy="18" r="2" />
+            <path d="M7 6h10M6.5 7.5l4.2 8.7M17.5 7.5l-4.2 8.7" />
+          </svg>
+          {!mobile && <span>{translate("sessionMap.label")}</span>}
         </button>
         {mobile && renderThemeButton(true)}
         {mobile && renderLanguageButton(true)}
@@ -1659,7 +1745,10 @@ export function AppShell() {
         }
       }
     `}</style>
-    <div style={{
+    <div
+      aria-hidden={sessionMapOpen ? true : undefined}
+      inert={sessionMapOpen ? true : undefined}
+      style={{
       display: "flex",
       width: "100%",
       height: "var(--app-viewport-height, 100dvh)",
@@ -2265,6 +2354,14 @@ export function AppShell() {
         </div>
       </div>
     </div>
+    {sessionMapOpen && selectedSession && !selectedSession.transient && (
+      <SessionMap
+        currentSessionId={selectedSession.id}
+        onActivate={handleSessionMapActivate}
+        onFork={handleSessionMapFork}
+        onClose={() => setSessionMapOpen(false)}
+      />
+    )}
     {personalizationOpen && (
       <PersonalizationConfig
         background={background}

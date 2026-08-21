@@ -4,14 +4,14 @@ import test from "node:test";
 
 const source = await readFile(new URL("./AppShell.tsx", import.meta.url), "utf8");
 
-test("uses a compact mobile toolbar with a floating six-action layer", () => {
+test("uses a compact mobile toolbar with a floating seven-action layer", () => {
   assert.match(source, /data-mobile-toolbar="true"[\s\S]*?flex: 1,[\s\S]*?minWidth: 0/);
   assert.match(
     source,
     /data-mobile-toolbar-actions="true"[\s\S]*?position: "absolute"[\s\S]*?right: 0,[\s\S]*?left: TOP_BAR_ICON_BUTTON_SIZE/,
   );
 
-  for (const action of ["history", "name", "branches", "system", "theme", "language"]) {
+  for (const action of ["history", "name", "branches", "system", "session-map", "theme", "language"]) {
     assert.match(source, new RegExp(`data-mobile-toolbar-action=(?:\\{mobile \\? )?"${action}"`));
   }
 });
@@ -42,6 +42,8 @@ test("keeps the mobile action layer open after using an expanded action", () => 
     assert.match(handler, /setMobileToolbarMoreOpen\(true\)/);
   }
 
+  assert.match(source, /handleSystemPromptToggle\(mobile\)[\s\S]*?data-mobile-toolbar-action=\{mobile \? "system" : undefined\}[\s\S]*?onClick=\{handleOpenSessionMap\}[\s\S]*?data-mobile-toolbar-action=\{mobile \? "session-map" : undefined\}/);
+  assert.match(source, /const handleOpenSessionMap = useCallback\([\s\S]*?setMobileToolbarMoreOpen\(false\)/);
   assert.match(source, /toggleTopPanel\("branches", true\)/);
   assert.match(source, /handleSystemPromptToggle\(mobile\)/);
   assert.match(source, /toggleTopPanel\("language", mobile\)/);
