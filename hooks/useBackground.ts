@@ -17,7 +17,6 @@ import {
 import {
   deletePersonalizationAsset,
   loadPersonalizationAsset,
-  savePersonalizationAsset,
 } from "@/lib/personalization-storage";
 
 export type BackgroundUploadError = "invalid-type" | "too-large" | "storage";
@@ -34,6 +33,8 @@ export interface BackgroundController {
   setBackgroundFit: (fit: BackgroundFit) => void;
 }
 
+const BACKGROUND_API = "/api/personalization/background";
+
 function readPreferences(): BackgroundPreferences {
   if (typeof window === "undefined") return DEFAULT_BACKGROUND_PREFERENCES;
   try {
@@ -43,12 +44,54 @@ function readPreferences(): BackgroundPreferences {
   }
 }
 
+function imageType(file: File): string {
+  if (file.type) return file.type.toLowerCase();
+  const extension = file.name.split(".").pop()?.toLowerCase();
+  return extension === "avif" ? "image/avif"
+    : extension === "bmp" ? "image/bmp"
+    : extension === "gif" ? "image/gif"
+    : extension === "jpg" || extension === "jpeg" ? "image/jpeg"
+    : extension === "png" ? "image/png"
+    : extension === "webp" ? "image/webp"
+    : "";
+}
+
+function preferencesFromResponse(
+  response: Response,
+  fallback: BackgroundPreferences,
+  assetName: string,
+): BackgroundPreferences {
+  const parsedStrength = Number(response.headers.get("x-pi-background-strength"));
+  const strength = Number.isFinite(parsedStrength)
+    ? Math.min(MAX_BACKGROUND_STRENGTH, Math.max(MIN_BACKGROUND_STRENGTH, parsedStrength))
+    : fallback.strength;
+  const fitHeader = response.headers.get("x-pi-background-fit");
+  const fit = fitHeader === "cover" || fitHeader === "contain" ? fitHeader : fallback.fit;
+  return { strength, fit, assetName };
+}
+
+async function uploadBackground(file: Blob, name: string, preferences: BackgroundPreferences): Promise<void> {
+  const response = await fetch(BACKGROUND_API, {
+    method: "PUT",
+    headers: {
+      "Content-Type": file.type,
+      "X-Pi-Background-Name": encodeURIComponent(name),
+      "X-Pi-Background-Strength": String(preferences.strength),
+      "X-Pi-Background-Fit": preferences.fit,
+    },
+    body: file,
+  });
+  if (!response.ok) throw new Error("storage");
+}
+
 export function useBackground(): BackgroundController {
   const [preferences, setPreferences] = useState<BackgroundPreferences>(readPreferences);
   const [backgroundUrl, setBackgroundUrl] = useState<string | null>(null);
   const [backgroundLoading, setBackgroundLoading] = useState(true);
   const objectUrlRef = useRef<string | null>(null);
   const operationRef = useRef(0);
+  const loadedRef = useRef(false);
+  const preferencesRef = useRef(preferences);
 
   const replaceObjectUrl = useCallback((next: string | null) => {
     if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
@@ -57,27 +100,54 @@ export function useBackground(): BackgroundController {
   }, []);
 
   useEffect(() => {
+    preferencesRef.current = preferences;
+  }, [preferences]);
+
+  useEffect(() => {
     const operation = ++operationRef.current;
-    void loadPersonalizationAsset(BACKGROUND_ASSET_KEY)
-      .then((stored) => {
+    void fetch(BACKGROUND_API, { cache: "no-store" })
+      .then(async (response) => {
         if (operation !== operationRef.current) return;
-        if (!stored) {
+        if (response.ok) {
+          const blob = await response.blob();
+          if (operation !== operationRef.current) return;
+          const encodedName = response.headers.get("x-pi-background-name");
+          const name = encodedName ? decodeURIComponent(encodedName) : "background";
+          replaceObjectUrl(URL.createObjectURL(blob));
+          setPreferences((current) => preferencesFromResponse(response, current, name));
+          void deletePersonalizationAsset(BACKGROUND_ASSET_KEY).catch(() => {});
+          return;
+        }
+        if (response.status !== 404) throw new Error("Unable to load background");
+
+        // One-time migration for backgrounds saved by versions that only used
+        // origin-scoped IndexedDB. The server copy becomes authoritative.
+        const legacy = await loadPersonalizationAsset(BACKGROUND_ASSET_KEY);
+        if (operation !== operationRef.current) return;
+        if (!legacy) {
           replaceObjectUrl(null);
           setPreferences((current) => current.assetName
             ? { ...current, assetName: null }
             : current);
           return;
         }
-        replaceObjectUrl(URL.createObjectURL(stored.blob));
-        setPreferences((current) => current.assetName === stored.name
-          ? current
-          : { ...current, assetName: stored.name });
+        const migratedBlob = legacy.blob.type
+          ? legacy.blob
+          : legacy.blob.slice(0, legacy.blob.size, imageType(new File([], legacy.name)));
+        await uploadBackground(migratedBlob, legacy.name, preferencesRef.current);
+        if (operation !== operationRef.current) return;
+        replaceObjectUrl(URL.createObjectURL(migratedBlob));
+        setPreferences((current) => ({ ...current, assetName: legacy.name }));
+        void deletePersonalizationAsset(BACKGROUND_ASSET_KEY).catch(() => {});
       })
       .catch(() => {
         if (operation === operationRef.current) replaceObjectUrl(null);
       })
       .finally(() => {
-        if (operation === operationRef.current) setBackgroundLoading(false);
+        if (operation === operationRef.current) {
+          loadedRef.current = true;
+          setBackgroundLoading(false);
+        }
       });
 
     return () => {
@@ -96,6 +166,18 @@ export function useBackground(): BackgroundController {
       // The current page still keeps the selected preferences when storage is unavailable.
     }
   }, [preferences]);
+
+  useEffect(() => {
+    if (!loadedRef.current || !backgroundUrl) return;
+    const timeout = window.setTimeout(() => {
+      void fetch(BACKGROUND_API, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ strength: preferences.strength, fit: preferences.fit }),
+      }).catch(() => {});
+    }, 200);
+    return () => window.clearTimeout(timeout);
+  }, [backgroundUrl, preferences.fit, preferences.strength]);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -132,10 +214,14 @@ export function useBackground(): BackgroundController {
     const operation = ++operationRef.current;
     setBackgroundLoading(true);
     try {
-      await savePersonalizationAsset(BACKGROUND_ASSET_KEY, file, file.name);
+      const normalizedFile = file.type
+        ? file
+        : file.slice(0, file.size, imageType(file));
+      await uploadBackground(normalizedFile, file.name, preferencesRef.current);
       if (operation !== operationRef.current) return;
-      replaceObjectUrl(URL.createObjectURL(file));
+      replaceObjectUrl(URL.createObjectURL(normalizedFile));
       setPreferences((current) => ({ ...current, assetName: file.name }));
+      void deletePersonalizationAsset(BACKGROUND_ASSET_KEY).catch(() => {});
     } catch (error) {
       if (error instanceof Error && (error.message === "invalid-type" || error.message === "too-large")) {
         throw error;
@@ -150,7 +236,9 @@ export function useBackground(): BackgroundController {
     const operation = ++operationRef.current;
     setBackgroundLoading(true);
     try {
-      await deletePersonalizationAsset(BACKGROUND_ASSET_KEY);
+      const response = await fetch(BACKGROUND_API, { method: "DELETE" });
+      if (!response.ok) throw new Error("storage");
+      await deletePersonalizationAsset(BACKGROUND_ASSET_KEY).catch(() => {});
       if (operation !== operationRef.current) return;
       replaceObjectUrl(null);
       setPreferences((current) => ({ ...current, assetName: null }));

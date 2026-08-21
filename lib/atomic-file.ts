@@ -2,18 +2,13 @@ import { randomUUID } from "crypto";
 import { renameSync, unlinkSync, writeFileSync } from "fs";
 import { basename, dirname, join } from "path";
 
-/**
- * Replace a file atomically without exposing credentials through default
- * process permissions. The caller must create the parent directory first.
- */
-export function writePrivateFileAtomicSync(path: string, contents: string): void {
+function writePrivateAtomicSync(path: string, contents: string | Uint8Array): void {
   const dir = dirname(path);
   const tempPath = join(dir, `.${basename(path)}-${randomUUID()}.tmp`);
   let operationFailed = false;
 
   try {
     writeFileSync(tempPath, contents, {
-      encoding: "utf8",
       flag: "wx",
       mode: 0o600,
       flush: true,
@@ -31,4 +26,17 @@ export function writePrivateFileAtomicSync(path: string, contents: string): void
       }
     }
   }
+}
+
+/**
+ * Replace a file atomically without exposing credentials through default
+ * process permissions. The caller must create the parent directory first.
+ */
+export function writePrivateFileAtomicSync(path: string, contents: string): void {
+  writePrivateAtomicSync(path, contents);
+}
+
+/** Atomically replace a private binary file. */
+export function writePrivateBufferAtomicSync(path: string, contents: Uint8Array): void {
+  writePrivateAtomicSync(path, contents);
 }
