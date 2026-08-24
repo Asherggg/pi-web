@@ -11,9 +11,10 @@ const jiti = createJiti(import.meta.url, {
 const {
   ExtensionStatusBar,
   formatExtensionStatusLine,
+  isMcpExtensionStatus,
   sanitizeExtensionStatusText,
 } = await jiti.import("./ExtensionStatusBar.tsx");
-const { I18nProvider } = await jiti.import("../hooks/useI18n.tsx");
+const { I18nProvider } = await jiti.import("@/hooks/useI18n");
 
 function renderStatusBar(props) {
   return renderToStaticMarkup(
@@ -58,9 +59,28 @@ test("renders a single status line without identifier keys", () => {
   assert.match(html, /extension-status-shelf/);
   assert.match(html, /extension-status-line/);
   assert.match(html, /extension-status-text/);
-  assert.match(html, />ponytail <\/span>/);
+  assert.match(html, />ponytail<\/span> /);
   assert.match(html, />memory</);
   assert.doesNotMatch(html, /05-ponytail|20-memory/);
+});
+
+test("renders the MCP status as an expandable button", () => {
+  assert.equal(isMcpExtensionStatus({ key: "mcp", text: "MCP: 4 servers enabled" }), true);
+  assert.equal(isMcpExtensionStatus({ key: "memory", text: "memory" }), false);
+
+  const html = renderStatusBar({
+    statuses: [
+      { key: "memory", text: "memory" },
+      { key: "mcp", text: "MCP: 4 servers enabled" },
+    ],
+    loadMcpTools: async () => ({ servers: [], totalTools: 0 }),
+  });
+
+  assert.match(html, /extension-mcp-status-trigger/);
+  assert.match(html, /aria-expanded="false"/);
+  assert.match(html, /Show MCP tools/);
+  assert.match(html, /MCP: 4 servers enabled/);
+  assert.doesNotMatch(html, /extension-mcp-panel/);
 });
 
 test("renders widgets and status text in one footer", () => {

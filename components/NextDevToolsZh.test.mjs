@@ -2,8 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createJiti } from "jiti";
 
-const { translateNextDevToolsValue } = await createJiti(import.meta.url)
+const { NEXT_DEV_TOOLS_PRESENT_CLASS, translateNextDevToolsValue } = await createJiti(import.meta.url)
   .import("./NextDevToolsZh.tsx");
+
+test("exposes the class used to reserve the dev-tools click target", () => {
+  assert.equal(NEXT_DEV_TOOLS_PRESENT_CLASS, "next-dev-tools-present");
+});
 
 test("translates the visible Next.js indicator labels", () => {
   assert.equal(translateNextDevToolsValue("Open Next.js Dev Tools"), "打开 Next.js 开发工具");

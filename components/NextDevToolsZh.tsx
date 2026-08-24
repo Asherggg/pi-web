@@ -66,6 +66,8 @@ const TRANSLATIONS: Readonly<Record<string, string>> = {
 
 const TRANSLATABLE_ATTRIBUTES = ["aria-label", "title", "data-tooltip"] as const;
 
+export const NEXT_DEV_TOOLS_PRESENT_CLASS = "next-dev-tools-present";
+
 type TranslatableElement = Element & {
   getAttribute: (name: string) => string | null;
   setAttribute: (name: string, value: string) => void;
@@ -120,10 +122,12 @@ export function NextDevToolsZh() {
 
     const portalObservers = new Map<Element, MutationObserver>();
     const translatePortals = () => {
+      let hasDevToolsPortal = false;
       for (const portal of document.querySelectorAll("nextjs-portal")) {
-        if (portalObservers.has(portal)) continue;
         const root = getPortalRoot(portal);
         if (!root) continue;
+        hasDevToolsPortal = true;
+        if (portalObservers.has(portal)) continue;
         translateShadowTree(root);
         const observer = new MutationObserver(() => translateShadowTree(root));
         observer.observe(root, {
@@ -135,6 +139,10 @@ export function NextDevToolsZh() {
         });
         portalObservers.set(portal, observer);
       }
+      document.documentElement.classList.toggle(
+        NEXT_DEV_TOOLS_PRESENT_CLASS,
+        hasDevToolsPortal,
+      );
     };
 
     translatePortals();
@@ -150,6 +158,7 @@ export function NextDevToolsZh() {
     return () => {
       documentObserver.disconnect();
       window.clearInterval(retryTimer);
+      document.documentElement.classList.remove(NEXT_DEV_TOOLS_PRESENT_CLASS);
       for (const observer of portalObservers.values()) observer.disconnect();
       portalObservers.clear();
     };

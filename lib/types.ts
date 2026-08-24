@@ -211,6 +211,19 @@ export interface ExtensionWidgetItem {
   placement: "aboveEditor" | "belowEditor";
 }
 
+export interface McpServerToolCatalog {
+  name: string;
+  status: string;
+  tools: string[];
+  disabled?: boolean;
+  error?: string;
+}
+
+export interface McpToolCatalog {
+  servers: McpServerToolCatalog[];
+  totalTools: number;
+}
+
 export interface SessionMessageEntry extends SessionEntryBase {
   type: "message";
   message: AgentMessage;

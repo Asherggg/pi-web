@@ -74,6 +74,8 @@ interface ExtensionRunnerLike {
     description?: string;
     sourceInfo: SlashCommandInfo["sourceInfo"];
   }>;
+  getToolDefinition?(name: string): unknown;
+  createContext?(): unknown;
   emit?(event: { type: "session_shutdown"; reason: "quit" }): Promise<unknown>;
   setUIContext?(uiContext?: unknown, mode?: "tui" | "rpc" | "json" | "print"): void;
 }

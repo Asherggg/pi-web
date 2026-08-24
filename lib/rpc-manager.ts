@@ -21,6 +21,8 @@ import type {
   ExtensionUiRequest,
   ExtensionUiResponse,
   ExtensionWidgetItem,
+  McpServerToolCatalog,
+  McpToolCatalog,
   SessionInfo,
   SessionMessageEntry,
 } from "./types";
@@ -671,6 +673,10 @@ export class AgentSessionWrapper {
         return null;
       }
 
+      case "get_mcp_tools": {
+        return this.getMcpToolCatalog();
+      }
+
       case "get_tools": {
         const all: ToolInfo[] = this.inner.getAllTools();
         const active = new Set<string>(this.inner.getActiveToolNames());
@@ -842,6 +848,81 @@ export class AgentSessionWrapper {
     const pending = this.pendingUiResponses.get(response.id);
     if (!pending) return;
     pending.resolve(response);
+  }
+
+  private async getMcpToolCatalog(): Promise<McpToolCatalog> {
+    await this.waitForExtensionsBound();
+    const runner = this.inner.extensionRunner;
+    const definition = runner.getToolDefinition?.("mcp");
+    const execute = definition && typeof definition === "object"
+      ? (definition as {
+          execute?: (
+            toolCallId: string,
+            params: Record<string, unknown>,
+            signal: AbortSignal | undefined,
+            onUpdate: undefined,
+            context: unknown,
+          ) => Promise<{ details?: unknown }>;
+        }).execute
+      : undefined;
+    const context = runner.createContext?.();
+    if (typeof execute !== "function" || context === undefined) {
+      throw new Error("The MCP extension is not available in this session");
+    }
+
+    const invoke = (params: Record<string, unknown>) => execute.call(
+      definition,
+      `pi-web-mcp-catalog-${randomUUID()}`,
+      params,
+      undefined,
+      undefined,
+      context,
+    );
+    const statusResult = await invoke({});
+    const statusDetails = statusResult.details;
+    if (!statusDetails || typeof statusDetails !== "object") {
+      throw new Error("The MCP extension returned an invalid status response");
+    }
+    const rawServers = (statusDetails as { servers?: unknown }).servers;
+    if (!Array.isArray(rawServers)) {
+      throw new Error("The MCP extension status did not include any servers");
+    }
+
+    const servers = await Promise.all(rawServers.flatMap((value): Promise<McpServerToolCatalog>[] => {
+      if (!value || typeof value !== "object") return [];
+      const item = value as Record<string, unknown>;
+      if (typeof item.name !== "string" || typeof item.status !== "string") return [];
+      const base = {
+        name: item.name,
+        status: item.status,
+        ...(item.disabled === true ? { disabled: true } : {}),
+      };
+      if (item.disabled === true || item.status === "disabled") {
+        return [Promise.resolve({ ...base, disabled: true, tools: [] })];
+      }
+      return [invoke({ server: item.name }).then((result): McpServerToolCatalog => {
+        const details = result.details && typeof result.details === "object"
+          ? result.details as Record<string, unknown>
+          : {};
+        const tools = Array.isArray(details.tools)
+          ? details.tools.filter((tool): tool is string => typeof tool === "string")
+          : [];
+        return {
+          ...base,
+          tools,
+          ...(typeof details.error === "string" ? { error: details.error } : {}),
+        };
+      }).catch((error): McpServerToolCatalog => ({
+        ...base,
+        tools: [],
+        error: error instanceof Error ? error.message : String(error),
+      }))];
+    }));
+
+    return {
+      servers,
+      totalTools: servers.reduce((total, server) => total + server.tools.length, 0),
+    };
   }
 
   private getExtensionStatuses(): Array<{ key: string; text: string }> {

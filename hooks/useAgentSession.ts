@@ -7,6 +7,7 @@ import type {
   ExtensionStatusItem,
   ExtensionUiRequest,
   ExtensionWidgetItem,
+  McpToolCatalog,
   SessionInfo,
   SessionTreeNode,
   UserMessage,
@@ -71,6 +72,11 @@ type AgentStateResponse = {
   extensionStatuses?: ExtensionStatusItem[];
   extensionWidgets?: ExtensionWidgetItem[];
   queuedMessages?: { steering?: string[]; followUp?: string[] } | null;
+};
+
+type AgentStateEnvelope = {
+  running: boolean;
+  state?: AgentStateResponse;
 };
 
 export interface QueuedMessages {
@@ -460,7 +466,36 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     } satisfies SessionStatsInfo;
   }, [messages, sessionStatsOverride, contextUsage, data?.filePath, data?.totalActiveMs, session?.id, session?.name]);
 
+  const applyLoadedAgentState = useCallback((sid: string, agentState: AgentStateEnvelope) => {
+    if (sessionIdRef.current !== sid) return;
+
+    const liveState = agentState.state;
+    if (liveState) {
+      if (liveState.contextUsage !== undefined) setContextUsage(liveState.contextUsage ?? null);
+      if (liveState.systemPrompt !== undefined) setSystemPrompt(liveState.systemPrompt ?? null);
+      if (liveState.thinkingLevel !== undefined) setThinkingLevel((liveState.thinkingLevel as ThinkingLevelOption) ?? "auto");
+      if (liveState.extensionStatuses !== undefined) setExtensionStatuses(liveState.extensionStatuses ?? []);
+      if (liveState.extensionWidgets !== undefined) setExtensionWidgets(liveState.extensionWidgets ?? []);
+      if (liveState.queuedMessages !== undefined) setQueuedMessages(normalizeQueuedMessages(liveState.queuedMessages));
+    } else if (!agentState.running) {
+      setQueuedMessages({ steering: [], followUp: [] });
+    }
+  }, []);
+
   const loadSession = useCallback(async (sid: string, showLoading = false, includeState = false) => {
+    const agentStatePromise = includeState
+      ? fetch(`/api/sessions/${encodeURIComponent(sid)}/state`)
+        .then(async (stateRes): Promise<AgentStateEnvelope | null> => {
+          if (!stateRes.ok) throw new Error(`HTTP ${stateRes.status}`);
+          const agentState = await stateRes.json() as AgentStateEnvelope;
+          applyLoadedAgentState(sid, agentState);
+          return agentState;
+        })
+        .catch((e) => {
+          console.error("Failed to load agent state:", e);
+          return null;
+        })
+      : null;
     let messagesLoaded = false;
     try {
       if (showLoading) setLoading(true);
@@ -492,36 +527,14 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       messagesLoaded = true;
       if (showLoading) setLoading(false);
       if (!includeState) return null;
-
-      try {
-        const stateRes = await fetch(`/api/sessions/${encodeURIComponent(sid)}/state`);
-        if (!stateRes.ok) throw new Error(`HTTP ${stateRes.status}`);
-        const agentState = await stateRes.json() as { running: boolean; state?: AgentStateResponse };
-        if (sessionIdRef.current !== sid) return null;
-
-        const liveState = agentState.state;
-        if (liveState) {
-          if (liveState.contextUsage !== undefined) setContextUsage(liveState.contextUsage ?? null);
-          if (liveState.systemPrompt !== undefined) setSystemPrompt(liveState.systemPrompt ?? null);
-          if (liveState.thinkingLevel !== undefined) setThinkingLevel((liveState.thinkingLevel as ThinkingLevelOption) ?? "auto");
-          if (liveState.extensionStatuses !== undefined) setExtensionStatuses(liveState.extensionStatuses ?? []);
-          if (liveState.extensionWidgets !== undefined) setExtensionWidgets(liveState.extensionWidgets ?? []);
-          if (liveState.queuedMessages !== undefined) setQueuedMessages(normalizeQueuedMessages(liveState.queuedMessages));
-        } else if (!agentState.running) {
-          setQueuedMessages({ steering: [], followUp: [] });
-        }
-        return agentState;
-      } catch (e) {
-        console.error("Failed to load agent state:", e);
-        return null;
-      }
+      return await agentStatePromise;
     } catch (e) {
       setError(String(e));
       return null;
     } finally {
       if (showLoading && !messagesLoaded) setLoading(false);
     }
-  }, []);
+  }, [applyLoadedAgentState]);
 
   const loadContext = useCallback(async (sid: string, leafId: string | null) => {
     try {
@@ -549,6 +562,12 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       console.error("Failed to load tools:", e);
     }
   }, [setToolPresetState]);
+
+  const loadMcpToolCatalog = useCallback(async (): Promise<McpToolCatalog | null> => {
+    const sid = sessionIdRef.current;
+    if (!sid) return null;
+    return sendAgentCommand<McpToolCatalog>(sid, { type: "get_mcp_tools" });
+  }, []);
 
   const promoteNewSession = useCallback((messageCount = 0, firstMessage = "(no messages)") => {
     const sid = sessionIdRef.current;
@@ -1939,7 +1958,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     handleCompact, handleSteer, handleFollowUp, handlePromptWithStreamingBehavior, handleAbortCompaction,
     handleRecallQueue,
     handleBuiltinSlashCommand,
-    handleToolPresetChange, handleThinkingLevelChange, loadTools, loadSlashCommands, setActiveLeafId, setData, setMessages,
+    handleToolPresetChange, handleThinkingLevelChange, loadTools, loadMcpToolCatalog, loadSlashCommands, setActiveLeafId, setData, setMessages,
     scrollToBottom, scrollUserMsgToTop,
     dispatch, setAgentRunning, setForkingEntryId,
     bashRunning, pendingBash,

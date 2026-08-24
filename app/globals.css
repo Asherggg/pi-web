@@ -348,6 +348,163 @@ button.extension-widget-trigger:focus-visible {
   white-space: pre-wrap;
 }
 
+.extension-mcp-panel {
+  display: flex;
+  flex: 0 0 100%;
+  flex-direction: column;
+  max-height: min(280px, 36dvh);
+  min-width: 0;
+  overflow: hidden;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-panel);
+}
+
+.extension-mcp-panel-header {
+  display: flex;
+  flex: 0 0 34px;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+  gap: 12px;
+  padding: 0 12px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.extension-mcp-panel-header span {
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.extension-mcp-server-list {
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.extension-mcp-server {
+  padding: 9px 12px 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 64%, transparent);
+}
+
+.extension-mcp-server:last-child {
+  border-bottom: 0;
+}
+
+.extension-mcp-server-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  min-width: 0;
+  gap: 12px;
+  margin-bottom: 7px;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.extension-mcp-server-heading strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.extension-mcp-server-heading span {
+  flex-shrink: 0;
+  color: var(--text-dim);
+  font-size: 10px;
+}
+
+.extension-mcp-tools {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(210px, 100%), 1fr));
+  gap: 4px 18px;
+  margin: 0;
+  padding: 0;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.45;
+  list-style: none;
+}
+
+.extension-mcp-tools li {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.extension-mcp-panel-message,
+.extension-mcp-empty,
+.extension-mcp-server-error {
+  padding: 12px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.extension-mcp-empty,
+.extension-mcp-server-error {
+  padding: 0;
+}
+
+.extension-mcp-panel-message.is-error,
+.extension-mcp-server-error {
+  color: #dc2626;
+}
+
+.extension-mcp-status-trigger {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  gap: 6px;
+  margin: 0;
+  padding: 2px 3px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.extension-mcp-status-trigger:hover,
+.extension-mcp-status-trigger[aria-expanded="true"] {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.extension-mcp-status-trigger:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 0;
+}
+
+.extension-mcp-status-trigger > span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.extension-mcp-status-chevron {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 6px;
+  border-right: 1px solid currentColor;
+  border-bottom: 1px solid currentColor;
+  transform: translateY(-1px) rotate(45deg);
+  transition: transform 120ms ease-out;
+}
+
+.extension-mcp-status-trigger[aria-expanded="true"] .extension-mcp-status-chevron {
+  transform: translateY(2px) rotate(225deg);
+}
+
 .extension-status-line {
   display: flex;
   flex: 1 1 0;
@@ -355,6 +512,10 @@ button.extension-widget-trigger:focus-visible {
   min-width: 0;
   height: 35px;
   padding: 0 12px;
+}
+
+.next-dev-tools-present .extension-status-line {
+  padding-right: 56px;
 }
 
 .extension-status-text {
@@ -1390,6 +1551,10 @@ span.token.table {
 @media (max-width: 640px) {
   .chat-stats-center {
     display: none !important;
+  }
+  .extension-status-shelf.has-widgets.has-status .extension-widget-triggers {
+    flex-basis: 50%;
+    max-width: 50%;
   }
   .sidebar-container {
     position: fixed !important;

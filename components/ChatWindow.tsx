@@ -282,6 +282,7 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
     isCompacting, compactError, compactResult, displayModel: displayModelValue, modelSwitching, sessionStats,
     slashCommands, slashCommandsLoading, queuedMessages,
     notices, extensionDialog, extensionCustomUi, extensionStatuses, extensionWidgets, respondToExtensionUi, sendExtensionCustomInput,
+    loadMcpToolCatalog,
     isAutoModelSelection,
     agentPhase,
     isNew,
@@ -297,6 +298,16 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
     modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSystemPromptLoaderChange, onSessionStatsPanelOpen,
   });
   const sessionBusy = agentRunning || bashRunning;
+  const mcpStatusLabels = useMemo(() => ({
+    title: t("chat.mcpTools"),
+    expand: t("chat.showMcpTools"),
+    collapse: t("chat.hideMcpTools"),
+    loading: t("chat.loadingMcpTools"),
+    unavailable: t("chat.mcpToolsUnavailable"),
+    noTools: t("chat.noMcpTools"),
+    toolCount: (count: number) => t(count === 1 ? "chat.mcpToolCount" : "chat.mcpToolsCount", { count }),
+    totalTools: (count: number) => t("chat.mcpToolsLoaded", { count }),
+  }), [t]);
 
   useEffect(() => {
     if (!extensionDialog || soundedExtensionDialogIdRef.current === extensionDialog.id) return;
@@ -577,8 +588,16 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
 
   if (loading) {
     return (
-      <div className="flex h-full items-center justify-center text-text-muted">
-         {t("chat.loadingSession")}
+      <div className="flex h-full min-w-0 flex-col">
+        <div className="flex min-h-0 flex-1 items-center justify-center text-text-muted">
+          {t("chat.loadingSession")}
+        </div>
+        <ExtensionStatusBar
+          statuses={extensionStatuses}
+          widgets={extensionWidgets}
+          loadMcpTools={loadMcpToolCatalog}
+          mcpLabels={mcpStatusLabels}
+        />
       </div>
     );
   }
@@ -692,7 +711,12 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
               </div>
             </div>
             {chatInputElement}
-            <ExtensionStatusBar statuses={extensionStatuses} widgets={extensionWidgets} />
+            <ExtensionStatusBar
+              statuses={extensionStatuses}
+              widgets={extensionWidgets}
+              loadMcpTools={loadMcpToolCatalog}
+              mcpLabels={mcpStatusLabels}
+            />
           </div>
         </div>
       ) : (
@@ -934,7 +958,12 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
 
       <div className="relative">
         {chatInputElement}
-        <ExtensionStatusBar statuses={extensionStatuses} widgets={extensionWidgets} />
+        <ExtensionStatusBar
+          statuses={extensionStatuses}
+          widgets={extensionWidgets}
+          loadMcpTools={loadMcpToolCatalog}
+          mcpLabels={mcpStatusLabels}
+        />
       </div>
       </>
       )}
