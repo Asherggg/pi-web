@@ -1,12 +1,13 @@
 "use client";
 
 import { Fragment, useId, useRef, useState } from "react";
-import { parseAnsiLine, stripAnsi } from "@/lib/ansi";
+import { stripAnsi } from "@/lib/ansi";
 import type {
   ExtensionStatusItem,
   ExtensionWidgetItem,
   McpToolCatalog,
 } from "@/lib/types";
+import { AnsiText } from "./AnsiText";
 import { ExtensionWidgets } from "./ExtensionWidgets";
 
 export interface McpStatusLabels {
@@ -33,8 +34,10 @@ const DEFAULT_MCP_LABELS: McpStatusLabels = {
 
 export function sanitizeExtensionStatusText(text: string): string {
   return text
-    .replace(/[\r\n\t]/g, " ")
-    .replace(/ +/g, " ")
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    .map((line) => line.replace(/\t/g, " ").replace(/ +/g, " ").trim())
+    .join("\n")
     .trim();
 }
 
@@ -50,30 +53,37 @@ export function isMcpExtensionStatus(status: ExtensionStatusItem): boolean {
 }
 
 function StatusText({ text }: { text: string }) {
-  return parseAnsiLine(sanitizeExtensionStatusText(text)).map((segment, index) => (
-    <span key={index} style={segment.style}>{segment.text}</span>
-  ));
+  return <AnsiText text={sanitizeExtensionStatusText(text)} />;
 }
 
-export function ExtensionStatusBar({
-  statuses,
-  widgets = [],
-  loadMcpTools,
-  mcpLabels = DEFAULT_MCP_LABELS,
-}: {
+interface ExtensionStatusBarProps {
   statuses: ExtensionStatusItem[];
   widgets?: ExtensionWidgetItem[];
   loadMcpTools?: () => Promise<McpToolCatalog | null>;
   mcpLabels?: McpStatusLabels;
-}) {
+}
+
+export function getExtensionStatusStateKey(statuses: ExtensionStatusItem[]): string {
+  return statuses.some(isMcpExtensionStatus) ? "with-mcp" : "without-mcp";
+}
+
+export function ExtensionStatusBar(props: ExtensionStatusBarProps) {
+  if (props.statuses.length === 0 && (props.widgets?.length ?? 0) === 0) return null;
+  return <ExtensionStatusContent key={getExtensionStatusStateKey(props.statuses)} {...props} />;
+}
+
+function ExtensionStatusContent({
+  statuses,
+  widgets = [],
+  loadMcpTools,
+  mcpLabels = DEFAULT_MCP_LABELS,
+}: ExtensionStatusBarProps) {
   const panelId = useId();
   const requestIdRef = useRef(0);
   const [mcpExpanded, setMcpExpanded] = useState(false);
   const [mcpLoading, setMcpLoading] = useState(false);
   const [mcpCatalog, setMcpCatalog] = useState<McpToolCatalog | null>(null);
   const [mcpError, setMcpError] = useState<string | null>(null);
-
-  if (statuses.length === 0 && widgets.length === 0) return null;
 
   const sortedStatuses = [...statuses].sort((a, b) => a.key.localeCompare(b.key));
   const statusLine = formatExtensionStatusLine(statuses);
