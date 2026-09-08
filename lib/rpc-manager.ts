@@ -16,6 +16,7 @@ import { cacheSessionPath, invalidateSessionListCache, resolveSessionPath } from
 import { getProjectTrustStatus, projectTrustReloadOptions } from "./project-trust";
 import { persistExplicitStartupPreferences } from "./startup-preferences";
 import { notifySessionComplete } from "./web-push";
+import { hasActiveSessionLivenessProvider } from "./session-liveness";
 import type { SlashCommandInfo } from "@earendil-works/pi-coding-agent";
 import type { AgentSessionLike, ExtensionUiContextLike, ToolInfo } from "./pi-types";
 import type {
@@ -125,12 +126,36 @@ const IDLE_RESET_EVENT_TYPES = new Set([
   "compaction_end",
 ]);
 
+const DEFAULT_SESSION_IDLE_TIMEOUT_MS = 10 * 60 * 1000;
+
+/**
+ * Resolves the PI_WEB_IDLE_TIMEOUT_MS environment variable into a session idle
+ * timeout in milliseconds. An unset/blank value returns the 10-minute default,
+ * `0` disables idle shutdown, and positive values up to Node's timer limit
+ * (2147483647 ms) are used as-is. Invalid or out-of-range values fall back to
+ * the default with a console warning.
+ * @param rawValue Value to parse; defaults to the environment variable.
+ */
+export function resolveSessionIdleTimeoutMs(
+  rawValue: string | undefined = process.env.PI_WEB_IDLE_TIMEOUT_MS,
+): number {
+  if (rawValue !== undefined && rawValue.trim() !== "") {
+    const parsed = Number(rawValue);
+    if (Number.isFinite(parsed) && parsed >= 0 && parsed <= 2_147_483_647) return parsed;
+    console.warn(`[pi-web] invalid PI_WEB_IDLE_TIMEOUT_MS "${rawValue}", falling back to 10 minutes`);
+  }
+  return DEFAULT_SESSION_IDLE_TIMEOUT_MS;
+}
+
+const SESSION_IDLE_TIMEOUT_MS = resolveSessionIdleTimeoutMs();
+
 const SESSION_REPLACEMENT_COMMAND_TYPES = new Set(["fork", "fork_after", "clone"]);
 const COMMANDS_ALLOWED_DURING_SESSION_REPLACEMENT = new Set([
   "get_state",
   "get_session_stats",
   "get_last_assistant_text",
   "get_tools",
+  "get_mcp_tools",
   "get_commands",
   "extension_ui_response",
   "extension_ui_input",
@@ -150,7 +175,7 @@ const THINKING_LEVEL_NAMES = new Set<ThinkingLevel>(["off", "minimal", "low", "m
 class PlainTextTheme extends Theme {
   constructor() {
     super(
-      { thinkingXhigh: "", searchMatchText: "" } as ConstructorParameters<typeof Theme>[0],
+      { muted: "", text: "", thinkingXhigh: "", searchMatchText: "" } as ConstructorParameters<typeof Theme>[0],
       { selectedBg: "" } as ConstructorParameters<typeof Theme>[1],
       "truecolor",
     );
@@ -197,6 +222,7 @@ export class AgentSessionWrapper {
   private pendingUiResponses = new Map<string, PendingUiResponse>();
   private pendingUiRequests = new Map<string, AgentEvent>();
   private activeCustomUis = new Map<string, ActiveCustomUi>();
+  private extensionUiAbortController = new AbortController();
   private extensionStatuses = new Map<string, string>();
   private extensionWidgets = new Map<string, ExtensionWidgetItem>();
   private activeExtensionWidgets = new Map<string, ActiveExtensionWidget>();
@@ -205,7 +231,7 @@ export class AgentSessionWrapper {
   private pendingPromptCount = 0;
   private promptAdmissionPendingCount = 0;
   private activeMutatingCommands = 0;
-  private sessionReplacement: "fork" | "fork_after" | "clone" | null = null;
+  private sessionReplacement: "fork" | "clone" | null = null;
   private agentRunNeedsCompletion = false;
   private promptAdmissionTail: Promise<void> = Promise.resolve();
   private extensionsBound = false;
@@ -436,16 +462,21 @@ export class AgentSessionWrapper {
   private resetIdleTimer(): void {
     if (this.idleTimer) clearTimeout(this.idleTimer);
     if (!this._alive) return;
+    // A resolved timeout of 0 disables idle shutdown entirely.
+    if (SESSION_IDLE_TIMEOUT_MS === 0) return;
     if (!this.isRunning()) this.forceShutdownOnIdle = false;
     this.idleTimer = setTimeout(() => {
-      if (this.isRunning() && !this.forceShutdownOnIdle) {
+      if (!this.forceShutdownOnIdle && (this.isRunning() || hasActiveSessionLivenessProvider({
+        sessionId: this.sessionId,
+        sessionFile: this.sessionFile || undefined,
+      }))) {
         this.resetIdleTimer();
         return;
       }
       void this.shutdown().catch((error) => {
         console.error("[pi-web] failed to shut down idle session:", error instanceof Error ? error.message : error);
       });
-    }, 10 * 60 * 1000);
+    }, SESSION_IDLE_TIMEOUT_MS);
   }
 
   private persistBashOnlySession(): void {
@@ -482,7 +513,7 @@ export class AgentSessionWrapper {
   }
 
   private async withSessionReplacement<T>(
-    replacement: "fork" | "fork_after" | "clone",
+    replacement: "fork" | "clone",
     operation: () => Promise<T>,
   ): Promise<T> {
     if (this.sessionReplacement) throw new Error("Session is already being copied");
@@ -502,9 +533,7 @@ export class AgentSessionWrapper {
       || this.promptAdmissionPendingCount > 0;
   }
 
-  private async shutdownAfterSessionReplacement(
-    replacement: "fork" | "fork_after" | "clone",
-  ): Promise<void> {
+  private async shutdownAfterSessionReplacement(replacement: "fork" | "clone"): Promise<void> {
     try {
       await this.shutdown();
     } catch (error) {
@@ -517,8 +546,6 @@ export class AgentSessionWrapper {
 
   async send(command: Record<string, unknown>): Promise<unknown> {
     const type = command.type as string;
-    const promptCommand = type === "prompt";
-    let promptAdmissionTransferred = false;
     const allowedDuringReplacement = COMMANDS_ALLOWED_DURING_SESSION_REPLACEMENT.has(type);
     if (this.sessionReplacement && !allowedDuringReplacement) {
       throw new Error("Session is being copied to a new session");
@@ -529,6 +556,8 @@ export class AgentSessionWrapper {
 
     const tracksMutation = !allowedDuringReplacement;
     if (tracksMutation) this.activeMutatingCommands += 1;
+    const promptCommand = type === "prompt";
+    let promptAdmissionTransferred = false;
     if (promptCommand) this.promptAdmissionPendingCount += 1;
 
     try {
@@ -553,6 +582,9 @@ export class AgentSessionWrapper {
         try {
           if (this.inner.isBashRunning) {
             throw new Error("Cannot send a prompt while a shell command is running");
+          }
+          if (this.extensionUiAbortController.signal.aborted) {
+            this.extensionUiAbortController = new AbortController();
           }
           const promptImages = command.images as Array<{ type: "image"; data: string; mimeType: string }> | undefined;
           const streamingBehavior = command.streamingBehavior as "steer" | "followUp" | undefined;
@@ -641,6 +673,8 @@ export class AgentSessionWrapper {
 
       case "abort":
         this.forceShutdownOnIdle = true;
+        // Stop must unwind extension commands that have not started the agent yet.
+        this.extensionUiAbortController.abort(new DOMException("Extension UI cancelled by Stop", "AbortError"));
         try {
           await this.withFinalIdleReset(() => this.inner.abort());
           return null;
@@ -655,7 +689,7 @@ export class AgentSessionWrapper {
           sessionId: this.inner.sessionId,
           sessionFile: this.inner.sessionFile ?? "",
           isStreaming: this.inner.isStreaming,
-          isPromptRunning: this.pendingPromptCount > 0,
+          isPromptRunning: this.pendingPromptCount > 0 || this.promptAdmissionPendingCount > 0,
           isBashRunning: this.inner.isBashRunning,
           isCompacting: this.inner.isCompacting,
           autoCompactionEnabled: this.inner.autoCompactionEnabled,
@@ -696,8 +730,7 @@ export class AgentSessionWrapper {
         if (this.isSessionRunningForReplacement()) {
           throw new Error("Cannot fork while the session is running");
         }
-        const replacement = command.type === "fork_after" ? "fork_after" : "fork";
-        return this.withSessionReplacement(replacement, async () => {
+        return this.withSessionReplacement("fork", async () => {
           const entryId = command.entryId as string;
           const sessionManager = this.inner.sessionManager;
           const currentSessionFile = this.inner.sessionFile;
@@ -710,14 +743,15 @@ export class AgentSessionWrapper {
 
           const sessionDir = sessionManager.getSessionDir();
           let newSessionFile: string;
-          const branchFromEntryId = command.type === "fork_after" ? entry.id : entry.parentId;
 
+          const branchFromEntryId = type === "fork_after" ? entry.id : entry.parentId;
           if (!branchFromEntryId) {
-            // Fork before the first message: create an empty session linked to this one.
+            // Fork before the first message: create an empty session linked to this one
             const newManager = SessionManager.create(sessionManager.getCwd(), sessionDir);
             newManager.newSession({ parentSession: currentSessionFile });
             newSessionFile = newManager.getSessionFile() as string;
           } else {
+            // Fork after some history: copy path up to (but not including) the fork point
             const sourceManager = SessionManager.open(currentSessionFile, sessionDir);
             const forkedPath = sourceManager.createBranchedSession(branchFromEntryId);
             if (!forkedPath) throw new Error("Failed to create forked session");
@@ -727,9 +761,31 @@ export class AgentSessionWrapper {
           const newSessionId = SessionManager.open(newSessionFile, sessionDir).getSessionId();
           cacheSessionPath(newSessionId, newSessionFile);
           invalidateSessionListCache();
-          await this.shutdownAfterSessionReplacement(replacement);
+          await this.shutdownAfterSessionReplacement("fork");
           return { cancelled: false, newSessionId };
         });
+      }
+
+      case "fork_branch": {
+        if (this.isSessionRunningForReplacement()) {
+          throw new Error("Cannot fork while the session is running");
+        }
+        const entryId = command.entryId as string;
+        const sessionManager = this.inner.sessionManager;
+        const currentSessionFile = this.inner.sessionFile;
+        if (!sessionManager.isPersisted()) return { cancelled: true };
+        if (!currentSessionFile) throw new Error("Persisted session is missing a session file");
+        if (!sessionManager.getEntry(entryId)) throw new Error("Invalid entry ID for forking");
+
+        const sessionDir = sessionManager.getSessionDir();
+        const sourceManager = SessionManager.open(currentSessionFile, sessionDir);
+        const forkedPath = sourceManager.createBranchedSession(entryId);
+        if (!forkedPath) throw new Error("Failed to create forked session");
+
+        const newSessionId = SessionManager.open(forkedPath, sessionDir).getSessionId();
+        cacheSessionPath(newSessionId, forkedPath);
+        invalidateSessionListCache();
+        return { cancelled: false, newSessionId };
       }
 
       case "clone": {
@@ -761,7 +817,7 @@ export class AgentSessionWrapper {
       }
 
       case "navigate_tree": {
-        if (this.isRunning()) {
+        if (this.isSessionRunningForReplacement()) {
           throw new Error("Cannot navigate while the session is running");
         }
         const result = await this.inner.navigateTree(command.targetId as string, {});
@@ -882,6 +938,9 @@ export class AgentSessionWrapper {
       }
 
       case "reload": {
+        if (this.extensionUiAbortController.signal.aborted) {
+          this.extensionUiAbortController = new AbortController();
+        }
         const activeToolNames = this.inner.getActiveToolNames();
         await this.waitForExtensionsBound();
         this.extensionStatuses.clear();
@@ -951,11 +1010,9 @@ export class AgentSessionWrapper {
           throw new Error(`Unsupported command: ${type}`);
       }
     } finally {
+      if (tracksMutation) this.activeMutatingCommands = Math.max(0, this.activeMutatingCommands - 1);
       if (promptCommand && !promptAdmissionTransferred) {
         this.promptAdmissionPendingCount = Math.max(0, this.promptAdmissionPendingCount - 1);
-      }
-      if (tracksMutation) {
-        this.activeMutatingCommands = Math.max(0, this.activeMutatingCommands - 1);
       }
     }
   }
@@ -1389,10 +1446,13 @@ export class AgentSessionWrapper {
   ): Promise<T> {
     if (typeof factory !== "function") return Promise.resolve(undefined as T);
 
+    const stopSignal = this.extensionUiAbortController.signal;
+    if (stopSignal.aborted) return Promise.reject(stopSignal.reason);
+
     const id = randomUUID();
     const width = this.getCustomUiWidth(options);
 
-    return new Promise<T>((resolve) => {
+    return new Promise<T>((resolve, reject) => {
       let completed = false;
       const tui = createHeadlessCustomUiTui(
         () => {
@@ -1404,7 +1464,9 @@ export class AgentSessionWrapper {
       const finish = (value: T) => {
         if (completed) return;
         completed = true;
-        resolve(value);
+        stopSignal.removeEventListener("abort", onStop);
+        if (stopSignal.aborted) reject(stopSignal.reason);
+        else resolve(value);
       };
       const done = (value: T) => {
         if (this.activeCustomUis.has(id)) {
@@ -1413,9 +1475,11 @@ export class AgentSessionWrapper {
           finish(value);
         }
       };
+      const onStop = () => done(undefined as T);
+      stopSignal.addEventListener("abort", onStop, { once: true });
 
       Promise.resolve()
-        .then(() => factory(tui, PLAIN_TEXT_THEME, CUSTOM_UI_KEYBINDINGS, done))
+        .then(() => completed ? undefined : factory(tui, PLAIN_TEXT_THEME, CUSTOM_UI_KEYBINDINGS, done))
         .then((component) => {
           if (completed) {
             try {
@@ -1459,6 +1523,9 @@ export class AgentSessionWrapper {
     signal?: AbortSignal,
   ): Promise<T> {
     if (signal?.aborted) return Promise.resolve(defaultValue);
+    const stopSignal = this.extensionUiAbortController.signal;
+    if (stopSignal.aborted) return Promise.reject(stopSignal.reason);
+    const abortSignal = signal ? AbortSignal.any([signal, stopSignal]) : stopSignal;
 
     const id = randomUUID();
     const fullRequest = {
@@ -1468,22 +1535,27 @@ export class AgentSessionWrapper {
       ...(timeout ? { timeout, expiresAt: Date.now() + timeout } : {}),
     };
 
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
+      let settled = false;
       let timeoutId: ReturnType<typeof setTimeout> | undefined;
       const cleanup = () => {
         if (timeoutId) clearTimeout(timeoutId);
-        signal?.removeEventListener("abort", onAbort);
+        abortSignal.removeEventListener("abort", onAbort);
         this.pendingUiRequests.delete(id);
         this.pendingUiResponses.delete(id);
+        this.emit({ type: "extension_ui_closed", id });
       };
       const settle = (value: T) => {
+        if (settled) return;
+        settled = true;
         cleanup();
-        resolve(value);
+        if (stopSignal.aborted) reject(stopSignal.reason);
+        else resolve(value);
       };
       const onAbort = () => settle(defaultValue);
 
       if (timeout) timeoutId = setTimeout(() => settle(defaultValue), timeout);
-      signal?.addEventListener("abort", onAbort, { once: true });
+      abortSignal.addEventListener("abort", onAbort, { once: true });
 
       this.pendingUiRequests.set(id, fullRequest as AgentEvent);
       this.pendingUiResponses.set(id, {

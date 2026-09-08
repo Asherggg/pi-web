@@ -12,7 +12,6 @@ const { renderToStaticMarkup } = await jiti.import("react-dom/server");
 const {
   ExtensionStatusBar,
   formatExtensionStatusLine,
-  getExtensionStatusStateKey,
   isMcpExtensionStatus,
   sanitizeExtensionStatusText,
 } = await jiti.import("./ExtensionStatusBar.tsx");
@@ -49,15 +48,17 @@ test("preserves status line breaks while normalizing horizontal whitespace", () 
   );
 });
 
-test("allows multiline status text to wrap and scroll within the footer", async () => {
+test("preserves explicit status lines without wrapping and scrolls long or tall output", async () => {
   const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
   const statusLineRule = css.match(/\.extension-status-line\s*\{([^}]*)\}/)?.[1] ?? "";
   const statusTextRule = css.match(/\.extension-status-text\s*\{([^}]*)\}/)?.[1] ?? "";
 
   assert.match(statusLineRule, /max-height:/);
-  assert.match(statusLineRule, /overflow-y:\s*auto/);
-  assert.match(statusTextRule, /overflow-wrap:\s*anywhere/);
-  assert.match(statusTextRule, /white-space:\s*pre-wrap/);
+  assert.match(statusLineRule, /align-items:\s*flex-start/);
+  assert.match(statusLineRule, /overflow:\s*auto/);
+  assert.match(statusTextRule, /white-space:\s*pre\s*;/);
+  assert.doesNotMatch(statusTextRule, /overflow[^:]*:\s*hidden/);
+  assert.doesNotMatch(statusTextRule, /overflow-wrap:\s*anywhere/);
   assert.doesNotMatch(statusTextRule, /text-overflow:\s*ellipsis/);
 });
 
@@ -95,14 +96,6 @@ test("renders the MCP status as an expandable button", () => {
   assert.match(html, /Show MCP tools/);
   assert.match(html, /MCP: 4 servers enabled/);
   assert.doesNotMatch(html, /extension-mcp-panel/);
-});
-
-test("resets MCP catalog state when the MCP status disappears", async () => {
-  assert.equal(getExtensionStatusStateKey([{ key: "mcp", text: "MCP ready" }]), "with-mcp");
-  assert.equal(getExtensionStatusStateKey([{ key: "memory", text: "memory" }]), "without-mcp");
-
-  const source = await readFile(new URL("./ExtensionStatusBar.tsx", import.meta.url), "utf8");
-  assert.match(source, /<ExtensionStatusContent key=\{getExtensionStatusStateKey\(props\.statuses\)\}/);
 });
 
 test("renders widgets and status text in one footer", () => {

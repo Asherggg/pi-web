@@ -56,34 +56,25 @@ function StatusText({ text }: { text: string }) {
   return <AnsiText text={sanitizeExtensionStatusText(text)} />;
 }
 
-interface ExtensionStatusBarProps {
-  statuses: ExtensionStatusItem[];
-  widgets?: ExtensionWidgetItem[];
-  loadMcpTools?: () => Promise<McpToolCatalog | null>;
-  mcpLabels?: McpStatusLabels;
-}
-
-export function getExtensionStatusStateKey(statuses: ExtensionStatusItem[]): string {
-  return statuses.some(isMcpExtensionStatus) ? "with-mcp" : "without-mcp";
-}
-
-export function ExtensionStatusBar(props: ExtensionStatusBarProps) {
-  if (props.statuses.length === 0 && (props.widgets?.length ?? 0) === 0) return null;
-  return <ExtensionStatusContent key={getExtensionStatusStateKey(props.statuses)} {...props} />;
-}
-
-function ExtensionStatusContent({
+export function ExtensionStatusBar({
   statuses,
   widgets = [],
   loadMcpTools,
   mcpLabels = DEFAULT_MCP_LABELS,
-}: ExtensionStatusBarProps) {
+}: {
+  statuses: ExtensionStatusItem[];
+  widgets?: ExtensionWidgetItem[];
+  loadMcpTools?: () => Promise<McpToolCatalog | null>;
+  mcpLabels?: McpStatusLabels;
+}) {
   const panelId = useId();
   const requestIdRef = useRef(0);
   const [mcpExpanded, setMcpExpanded] = useState(false);
   const [mcpLoading, setMcpLoading] = useState(false);
   const [mcpCatalog, setMcpCatalog] = useState<McpToolCatalog | null>(null);
   const [mcpError, setMcpError] = useState<string | null>(null);
+
+  if (statuses.length === 0 && widgets.length === 0) return null;
 
   const sortedStatuses = [...statuses].sort((a, b) => a.key.localeCompare(b.key));
   const statusLine = formatExtensionStatusLine(statuses);

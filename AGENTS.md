@@ -107,10 +107,10 @@ components/
   ChatMinimap.tsx     scroll minimap alongside the message list
   MarkdownBody.tsx    markdown renderer
   ModelsConfig.tsx    modal for editing models.json (opened from sidebar bottom)
+  AgentsConfig.tsx    built-in subagent toggle + agent profile editor
   PersonalizationConfig.tsx local wallpaper and completion-sound settings
   SessionMap.tsx      workspace-level conversation canvas with pan/zoom/drag
   NextDevToolsZh.tsx  development-only Chinese labels for Next.js dev tools
-  AgentsConfig.tsx    built-in subagent toggle + agent profile editor
   PluginsConfig.tsx   modal for installed package plugins
   SkillsConfig.tsx    modal for loaded/search/installable skills
   FileExplorer.tsx    file tree inside sidebar

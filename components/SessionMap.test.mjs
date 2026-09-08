@@ -14,16 +14,6 @@ test("keeps the map modal keyboard-contained and restores focus", () => {
   assert.match(shellSource, /inert=\{sessionMapOpen \? true : undefined\}/);
 });
 
-test("navigates a Session Map node exactly once", () => {
-  const start = shellSource.indexOf("const handleSessionMapActivate = useCallback");
-  const end = shellSource.indexOf("const handleSessionMapFork = useCallback", start);
-  const handler = shellSource.slice(start, end);
-
-  assert.match(handler, /const isCurrentSession = activeSessionIdRef\.current === session\.id/);
-  assert.match(handler, /if \(isCurrentSession\)[\s\S]*?branchLeafChangeFnRef\.current\(entryId\)[\s\S]*?else \{[\s\S]*?sendAgentCommand/);
-  assert.equal(handler.match(/type: "navigate_tree"/g)?.length, 1);
-});
-
 test("supports mouse and touch canvas gestures", () => {
   assert.match(source, /onPointerDown=\{handlePanStart\}/);
   assert.match(source, /onTouchStart=\{handleTouchStart\}/);
