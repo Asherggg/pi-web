@@ -21,6 +21,9 @@ import {
 } from "@/lib/personalization-storage";
 import { decodePcmWav } from "@/lib/wav-decoder";
 
+export const AUDIO_IDLE_SUSPEND_MS = 1000;
+export const AUDIO_STALE_CHIME_MS = 3000;
+
 export type SoundUploadError = "invalid-type" | "too-large" | "too-long" | "decode" | "storage";
 
 export interface AudioController {
@@ -37,6 +40,7 @@ export interface AudioController {
   playDoneSound: () => void;
   previewDoneSound: () => void;
   unlockAudio: (force?: boolean) => void;
+  holdAudio: () => () => void;
   soundEnabledRef: React.RefObject<boolean>;
 }
 
@@ -165,6 +169,14 @@ export function useAudio(): AudioController {
   useEffect(() => { presetRef.current = soundPreset; }, [soundPreset]);
   useEffect(() => { volumeRef.current = soundVolume; }, [soundVolume]);
 
+  // Reuse a single AudioContext so it can be resumed if the browser
+  // autoplay policy suspends it (contexts created outside user gestures
+  // start in "suspended" state and produce no sound). It is suspended while
+  // idle, never closed: a running context holds an audio output stream open
+  // even when silent (an Android AudioMix wake lock, #1157), and WebKit lets
+  // a context resume without a gesture only once it has started in one. Each
+  // send's unlock resumes it briefly, so a gesture keeps re-establishing that,
+  // and a hold keeps it running while the shown session's run is under way.
   const ctxRef = useRef<AudioContext | null>(null);
   const getCtx = useCallback((): AudioContext | null => {
     if (ctxRef.current && ctxRef.current.state !== "closed") return ctxRef.current;
@@ -213,28 +225,71 @@ export function useAudio(): AudioController {
       customOperationRef.current += 1;
     };
   }, [getCtx]);
+  // resume() calls not settled yet; the idle suspend waits for them.
+  const resumingRef = useRef(0);
+  // Holds taken by holdAudio(); the idle suspend waits for them too.
+  const holdsRef = useRef(0);
+  const idleTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  const scheduleIdleSuspend = useCallback((ctx: AudioContext) => {
+    clearTimeout(idleTimerRef.current);
+    idleTimerRef.current = setTimeout(() => {
+      if (resumingRef.current === 0 && holdsRef.current === 0) ctx.suspend().catch(() => {});
+    }, Math.max(AUDIO_IDLE_SUSPEND_MS, (customBufferRef.current?.duration ?? 0) * 1000 + 100));
+  }, []);
+
+  // Resume, run `onRunning`, and suspend AUDIO_IDLE_SUSPEND_MS after the last
+  // run settled, unless a newer resume or a hold is still outstanding then.
+  const runBriefly = useCallback((ctx: AudioContext, onRunning: () => void) => {
+    resumingRef.current++;
+    const settled = () => {
+      resumingRef.current--;
+      scheduleIdleSuspend(ctx);
+    };
+    ctx.resume().then(onRunning).catch(() => {}).then(settled);
+  }, [scheduleIdleSuspend]);
 
   const unlockAudio = useCallback((force = false) => {
     if (!force && !enabledRef.current) return;
     const ctx = getCtx();
-    if (!ctx || ctx.state !== "suspended") return;
-    void ctx.resume().catch(() => {});
-  }, [getCtx]);
+    if (!ctx || ctx.state === "running") return;
+    runBriefly(ctx, () => {});
+  }, [getCtx, runBriefly]);
 
   const toggle = useCallback(() => {
     const next = !enabledRef.current;
     if (next) unlockAudio(true);
+    else ctxRef.current?.suspend().catch(() => {});
     enabledRef.current = next;
     storePreference("pi-sound-enabled", String(next));
     setEnabled(next);
   }, [unlockAudio]);
+
+  const holdAudio = useCallback(() => {
+    holdsRef.current++;
+    clearTimeout(idleTimerRef.current);
+    if (enabledRef.current) {
+      const ctx = getCtx();
+      if (ctx && ctx.state !== "running") runBriefly(ctx, () => {});
+    }
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      holdsRef.current--;
+      if (ctxRef.current) scheduleIdleSuspend(ctxRef.current);
+    };
+  }, [getCtx, runBriefly, scheduleIdleSuspend]);
 
   const playSelectedSound = useCallback((force: boolean) => {
     if (!force && !enabledRef.current) return;
     const ctx = getCtx();
     if (!ctx) return;
 
+    const requestedAt = Date.now();
     const play = () => {
+      if (!force && !enabledRef.current) return;
+      if (Date.now() - requestedAt > AUDIO_STALE_CHIME_MS) return;
       try {
         const preset = presetRef.current;
         const volume = volumeRef.current;
@@ -248,12 +303,8 @@ export function useAudio(): AudioController {
       }
     };
 
-    if (ctx.state === "suspended") {
-      void ctx.resume().then(play).catch(() => {});
-      return;
-    }
-    play();
-  }, [getCtx]);
+    runBriefly(ctx, play);
+  }, [getCtx, runBriefly]);
 
   const setSoundPreset = useCallback((preset: SoundPreset) => {
     if (preset === "custom" && !customBufferRef.current) return;
@@ -342,6 +393,7 @@ export function useAudio(): AudioController {
     playDoneSound: playDone,
     previewDoneSound: previewDone,
     unlockAudio,
+    holdAudio,
     soundEnabledRef: enabledRef,
   };
 }

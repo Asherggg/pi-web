@@ -4,7 +4,7 @@ import test from "node:test";
 
 const source = readFileSync(new URL("./useAgentSession.ts", import.meta.url), "utf8");
 const chatWindowSource = readFileSync(new URL("../components/ChatWindow.tsx", import.meta.url), "utf8");
-const loadStart = source.indexOf("  const applyLoadedAgentState = useCallback");
+const loadStart = source.indexOf("  const applyLoadedStatusSnapshot = useCallback");
 const loadEnd = source.indexOf("  const loadContext = useCallback", loadStart);
 const loadSource = source.slice(loadStart, loadEnd);
 
@@ -12,13 +12,13 @@ test("hydrates extension status without waiting for the session transcript", () 
   assert.notEqual(loadStart, -1);
   assert.notEqual(loadEnd, -1);
   assert.match(loadSource, /const agentStatePromise = includeState/);
-  assert.match(loadSource, /applyLoadedAgentState\(sid, agentState\)/);
+  assert.match(loadSource, /applyLoadedStatusSnapshot\(sid, agentState, runId, usageRequestId\)/);
   assert.match(loadSource, /liveState\.extensionStatuses !== undefined[\s\S]*?setExtensionStatuses/);
 
   const stateRequest = loadSource.indexOf("const agentStatePromise = includeState");
   const transcriptRequest = loadSource.indexOf("const params = new URLSearchParams");
-  const immediateApply = loadSource.indexOf("applyLoadedAgentState(sid, agentState)");
-  const transcriptApply = loadSource.indexOf("setMessages(persistedMessages)");
+  const immediateApply = loadSource.indexOf("applyLoadedStatusSnapshot(sid, agentState, runId, usageRequestId)");
+  const transcriptApply = loadSource.indexOf("setMessages(next.messages)");
 
   assert.ok(stateRequest < transcriptRequest);
   assert.ok(immediateApply < transcriptApply);
