@@ -1,13 +1,14 @@
 import assert from "node:assert/strict";
 import test, { mock } from "node:test";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { createJiti } from "jiti";
 
 // The hook runs against a stand-in for React's hooks, mocked timers and a fake
 // AudioContext whose resume() settles when the test says so, so the context's
 // lifecycle between chimes can be played out without a browser.
-const shimUrl = new URL("./__fixtures__/react-hook-shim.mjs", import.meta.url).href;
-const jiti = createJiti(import.meta.url, { tsconfigPaths: true, alias: { react: shimUrl } });
-const { renderHook } = await import(shimUrl);
+const shimPath = fileURLToPath(new URL("./__fixtures__/react-hook-shim.mjs", import.meta.url));
+const jiti = createJiti(import.meta.url, { tsconfigPaths: true, alias: { react: shimPath } });
+const { renderHook } = await import(pathToFileURL(shimPath).href);
 const { AUDIO_IDLE_SUSPEND_MS, AUDIO_STALE_CHIME_MS, useAudio } = await jiti.import("./useAudio.ts");
 
 const node = () => ({ connect() {}, start() {}, stop() {}, frequency: {}, gain: { setValueAtTime() {}, linearRampToValueAtTime() {}, exponentialRampToValueAtTime() {} } });
