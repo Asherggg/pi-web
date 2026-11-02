@@ -7,6 +7,17 @@ export interface WorkflowStep {
   goal: string;
   deliverables: string;
 }
+export type ReportAdoptionStatus = "pending" | "reviewed" | "accepted" | "needs_changes" | "rejected";
+export interface ReportAdoption {
+  reportKey: string;
+  parentSessionId: string;
+  childSessionId: string;
+  resultEntryId: string;
+  fingerprint: string;
+  status: Exclude<ReportAdoptionStatus, "pending">;
+  note?: string;
+  updatedAt: string;
+}
 export interface SessionWorkflow { moduleId: string; steps: WorkflowStep[]; activeStep?: number; disabled?: boolean }
 export interface WorkbenchModule { id: string; name: string; description: string; steps: WorkflowStep[]; deleted?: boolean }
 export interface WorkbenchState {
@@ -14,6 +25,7 @@ export interface WorkbenchState {
   revision: number;
   modules: WorkbenchModule[];
   sessions: Record<string, SessionWorkflow>;
+  adoptions: Record<string, ReportAdoption>;
 }
 export class WorkbenchError extends Error {
   constructor(public code: string, public status = 400) { super(code); }
@@ -58,7 +70,7 @@ export function initialWorkbenchState(): WorkbenchState {
     template("development", "Development", ["Understand", "Implement", "Review", "Deliver"]),
     template("research", "Research", ["Collect", "Compare", "Verify", "Report"]),
     template("github", "Repository", ["Explore", "Read code", "Validate", "Report"]),
-  ], sessions: Object.create(null) };
+  ], sessions: Object.create(null), adoptions: Object.create(null) };
 }
 export function decodeWorkbenchState(value: unknown): WorkbenchState {
   const s = record(value);
@@ -72,10 +84,26 @@ export function decodeWorkbenchState(value: unknown): WorkbenchState {
     if (!validSessionId(id)) throw new WorkbenchError("corrupt", 409);
     sessions[id] = decodeWorkflow(workflow);
   }
-  return { version: 1, revision: Number(s.revision), modules, sessions };
+  const adoptions: Record<string, ReportAdoption> = Object.create(null);
+  const rawAdoptions = s.adoptions === undefined ? {} : record(s.adoptions);
+  if (Object.keys(rawAdoptions).length > 10000) throw new WorkbenchError("limit", 409);
+  for (const [key, raw] of Object.entries(rawAdoptions)) {
+    const adoption = record(raw);
+    const parentSessionId = adoption.parentSessionId;
+    const childSessionId = adoption.childSessionId;
+    const status = adoption.status;
+    const note = text(adoption.note ?? "", 1000);
+    if (key.length > 260 || !validSessionId(parentSessionId) || !validSessionId(childSessionId) || typeof adoption.reportKey !== "string" || adoption.reportKey !== key || !validSessionId(adoption.resultEntryId) || typeof adoption.fingerprint !== "string" || !/^[a-f0-9]{64}$/.test(adoption.fingerprint) || !["reviewed", "accepted", "needs_changes", "rejected"].includes(String(status)) || typeof adoption.updatedAt !== "string" || !Number.isFinite(Date.parse(adoption.updatedAt))) throw new WorkbenchError("corrupt", 409);
+    adoptions[key] = { reportKey: key, parentSessionId, childSessionId, resultEntryId: adoption.resultEntryId, fingerprint: adoption.fingerprint, status: status as ReportAdoption["status"], ...(note ? { note } : {}), updatedAt: adoption.updatedAt };
+  }
+  return { version: 1, revision: Number(s.revision), modules, sessions, adoptions };
 }
 export function validSessionId(id: unknown): id is string { return typeof id === "string" && /^[a-zA-Z0-9_-]{1,128}$/.test(id) && !["__proto__", "constructor", "prototype"].includes(id); }
+export function reportAdoptionKey(parentSessionId: string, reportEntryId: string): string {
+  return `${parentSessionId}|${reportEntryId}`;
+}
 export type WorkbenchAction =
+  | { type: "review-report"; parentSessionId: string; childSessionId: string; reportEntryId: string; resultEntryId: string; fingerprint: string; status: ReportAdoption["status"]; note?: string }
   | { type: "save-module"; module: WorkbenchModule }
   | { type: "toggle-module"; id: string; deleted: boolean }
   | { type: "assign"; sessionId: string; moduleId: string | null }
@@ -84,7 +112,19 @@ export type WorkbenchAction =
 export function applyWorkbenchAction(state: WorkbenchState, input: unknown): WorkbenchState {
   const a = record(input);
   const next = structuredClone(state);
-  if (a.type === "save-module") {
+  if (a.type === "review-report") {
+    if (!validSessionId(a.parentSessionId) || !validSessionId(a.childSessionId) || !validSessionId(a.reportEntryId) || !validSessionId(a.resultEntryId) || typeof a.fingerprint !== "string" || !/^[a-f0-9]{64}$/.test(a.fingerprint) || !["reviewed", "accepted", "needs_changes", "rejected"].includes(String(a.status))) throw new WorkbenchError("invalid");
+    const note = text(a.note ?? "", 1000);
+    const reportKey = reportAdoptionKey(a.parentSessionId, a.reportEntryId);
+    if (next.adoptions[reportKey]?.status === a.status
+      && next.adoptions[reportKey]?.fingerprint === a.fingerprint
+      && next.adoptions[reportKey]?.resultEntryId === a.resultEntryId
+      && next.adoptions[reportKey]?.note === (note || undefined)) return state;
+    const previous = next.adoptions[reportKey];
+    if (a.status === "accepted" && (!previous || !["reviewed", "accepted"].includes(previous.status) || previous.fingerprint !== a.fingerprint || previous.resultEntryId !== a.resultEntryId || previous.childSessionId !== a.childSessionId)) throw new WorkbenchError("reviewFirst", 409);
+    if ((a.status === "needs_changes" || a.status === "rejected") && !note) throw new WorkbenchError("reviewNoteRequired");
+    next.adoptions[reportKey] = { reportKey, parentSessionId: a.parentSessionId, childSessionId: a.childSessionId, resultEntryId: a.resultEntryId, fingerprint: a.fingerprint, status: a.status as ReportAdoption["status"], ...(note ? { note } : {}), updatedAt: new Date().toISOString() };
+  } else if (a.type === "save-module") {
     const preset = decodeModule(a.module);
     if (next.modules.some((m) => m.id !== preset.id && !m.deleted && m.name === preset.name)) throw new WorkbenchError("duplicate");
     const i = next.modules.findIndex((m) => m.id === preset.id);

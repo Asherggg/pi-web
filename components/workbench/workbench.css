@@ -22,13 +22,14 @@
 .lancer-tree-controls select { flex: 1; width: 120px; }
 .lancer-tree-controls button { font-size: 10px; }
 .lancer-tree-scroll { flex: 1; min-height: 0; overflow: auto; padding: 0 10px 12px; }
-.lancer-lanes { display: flex; gap: 12px; align-items: flex-start; min-width: 100%; }
+.lancer-lanes { position: relative; display: flex; gap: 28px; align-items: flex-start; min-width: 100%; }
+.lancer-lineage-overlay { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
 .lancer-lane { width: 250px; min-width: 220px; flex: 1 0 220px; }
 .lancer-lane-heading { position: relative; padding: 8px 0; margin-bottom: 5px; border-bottom: 1px solid var(--border); }
 .lancer-lane-heading strong, .lancer-lane-heading small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lancer-lane-heading small { color: var(--text-dim); font-size: 10px; margin-top: 4px; }
 .lancer-lane[data-running=true] .lancer-lane-heading { border-bottom-color: var(--accent); }
-.lancer-tree-node { position: relative; display: flex; gap: 3px; border-left: 1px solid var(--border); padding: 3px 0 3px 9px; min-width: 0; }
+.lancer-tree-node { position: relative; z-index: 1; display: flex; gap: 3px; border-left: 1px solid var(--border); padding: 3px 0 3px 9px; min-width: 0; }
 .lancer-tree-node::before { content: ""; position: absolute; width: 5px; height: 5px; left: -3px; top: 15px; border-radius: 50%; background: var(--accent); }
 .lancer-tree-node > button:first-child { flex: 1; width: 0; min-width: 0; text-align: left; border-color: transparent; background: var(--bg); }
 .lancer-node-kind { display: block; color: var(--text-dim); font-size: 10px; }
@@ -56,4 +57,27 @@
 .lancer-skill-options label { display: flex; flex-direction: row; align-items: center; margin: 5px 0; gap: 7px; overflow-wrap: anywhere; }
 .lancer-editor footer { justify-content: flex-end; margin-top: 16px; }
 @media (max-width: 760px) { .lancer-tree { position: absolute; inset: 0 0 0 auto; z-index: 8; width: min(360px, 92%); box-shadow: -6px 0 25px rgba(0, 0, 0, .15); } .lancer-workbench-toolbar button, .lancer-tree button { min-height: 32px; } .lancer-workflow-bar { padding: 5px 8px; } }
+.lancer-lineage h3, .lancer-review-panel h3 { font-size: 12px; margin: 5px 0 8px; }
+.lancer-lineage { margin: 5px 0 14px; padding: 8px; border: 1px solid var(--border); border-radius: 6px; }
+.lancer-lineage-edge { display: flex; align-items: center; gap: 5px; padding: 3px 0; }
+.lancer-lineage-edge button { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 45%; font-size: 10px; }
+.lancer-review-panel { padding: 10px; border: 1px solid var(--accent); border-radius: 6px; margin-bottom: 12px; }
+.lancer-report-body { max-height: 240px; white-space: pre-wrap; overflow: auto; overflow-wrap: anywhere; font-size: 12px; line-height: 1.5; }
+.lancer-review-panel label { display: flex; flex-direction: column; gap: 6px; font-size: 11px; margin: 10px 0; }
+.lancer-review-panel textarea { color: var(--text); background: var(--bg); min-height: 68px; padding: 6px; border: 1px solid var(--border); border-radius: 4px; resize: vertical; }
+.lancer-review-actions { display: flex; flex-wrap: wrap; gap: 5px; }
+.lancer-review-panel small { display: inline-block; margin: 4px; color: var(--text-dim); }
+.lancer-review-button { font-size: 10px !important; max-width: 100px; align-self: flex-start; overflow-wrap: anywhere; }
+.lancer-review-button.is-stale { border-style: dashed; }
+.lancer-snapshots { border-top: 1px solid var(--border); margin-top: 14px; padding-top: 10px; }
+.lancer-snapshots header { display: flex; align-items: center; justify-content: space-between; }
+.lancer-snapshots h3 { font-size: 12px; margin: 0 0 6px; }
+.lancer-snapshot-toggle { display: flex; align-items: center; gap: 6px; }
+.lancer-snapshots select { display: block; width: 100%; margin: 8px 0; }
+.lancer-snapshots details { overflow-wrap: anywhere; }
+.lancer-snapshot-diff { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px; margin-top: 8px; }
+.lancer-snapshot-diff section { min-width: 0; }
+.lancer-snapshot-diff h4 { font-size: 11px; margin: 0; padding: 5px; background: var(--bg-selected); }
+.lancer-snapshot-diff pre { font-family: var(--font-mono); font-size: 11px; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 400px; overflow: auto; background: var(--bg); border: 1px solid var(--border); margin: 0; padding: 6px; }
+@media (max-width: 500px) { .lancer-snapshot-diff { grid-template-columns: minmax(0, 1fr); } }
 @media (prefers-reduced-motion: reduce) { .lancer-workbench *, .lancer-editor * { scroll-behavior: auto !important; } }

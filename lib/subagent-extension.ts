@@ -102,6 +102,7 @@ export interface SubagentToolDetails {
   runInBackground: boolean;
   createdAt: string;
   completedAt?: string;
+  resultEntryId?: string;
   error?: string;
   worktreePath?: string;
   worktreeBranch?: string;
@@ -171,6 +172,7 @@ export function subagentToolDetails(run: SubagentRunInfo): SubagentToolDetails {
     runInBackground: run.runInBackground,
     createdAt: run.createdAt,
     ...(run.completedAt ? { completedAt: run.completedAt } : {}),
+    ...(run.resultEntryId ? { resultEntryId: run.resultEntryId } : {}),
     ...(run.error ? { error: run.error } : {}),
     ...(run.worktreePath ? { worktreePath: run.worktreePath } : {}),
     ...(run.worktreeBranch ? { worktreeBranch: run.worktreeBranch } : {}),

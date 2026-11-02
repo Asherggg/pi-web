@@ -19,6 +19,8 @@ export async function POST(request: Request) {
     try { body = JSON.parse(text); } catch { throw new WorkbenchError("invalid"); }
     if (!body || !Number.isSafeInteger(body.revision) || !body.action || typeof body.action !== "object") throw new WorkbenchError("invalid");
     const action = body.action;
+    // Report decisions must pass the dedicated evidence revalidation route.
+    if (action.type === "review-report") throw new WorkbenchError("invalid");
     if (action.sessionId !== undefined) {
       if (!validSessionId(action.sessionId)) throw new WorkbenchError("invalid");
       const live = getRpcSession(action.sessionId);

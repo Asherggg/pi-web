@@ -133,6 +133,8 @@ export interface SubagentRunInfo {
   worktreeCleanupError?: string;
   /** Set once the run's result is recorded, as `SubagentResultMetadata.worktreeExists`. */
   worktreeExists?: boolean;
+  /** Native immutable identity of this terminal result; a resumed run receives a new id. */
+  resultEntryId?: string;
   /** Set on a run started by `resume`, which reuses the session ID of an earlier run. Not persisted. */
   resumed?: boolean;
 }
@@ -999,6 +1001,7 @@ export function readSubagentRun(entries: readonly SessionEntry[], sessionId: str
     runInBackground: data.runInBackground === true,
     status: persistedStatus,
     createdAt: typeof data.createdAt === "string" ? data.createdAt : "",
+    ...(resultEntry ? { resultEntryId: resultEntry.id } : {}),
     ...(result && typeof result.completedAt === "string" ? { completedAt: result.completedAt } : {}),
     ...(result && typeof result.result === "string" ? { result: result.result } : {}),
     ...(result && typeof result.error === "string" ? { error: result.error } : {}),

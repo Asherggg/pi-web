@@ -6,7 +6,11 @@ import { getRpcSession, getRpcSessionInfos, getRunningRpcSessionIds, subagentDis
 import { getSessionSettings } from "@/lib/session-reader";
 import { workspaceKeyOf } from "@/lib/workspace-memory";
 import type { SessionEntry } from "@/lib/types";
-import { buildTaskLane, familySessionIds, type TaskLane, type TaskScope } from "@/lib/workbench/graph";
+import { buildTaskLane, buildTaskLineageEdges, familySessionIds, type TaskLane, type TaskScope } from "@/lib/workbench/graph";
+import { readSubagentRun } from "@/lib/subagents";
+import { buildReportEvidence } from "@/lib/workbench/report-evidence";
+import { readWorkbenchState } from "@/lib/workbench/workflow-store";
+import { reportAdoptionKey } from "@/lib/workbench/workflow";
 import { validSessionId } from "@/lib/workbench/workflow";
 export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
@@ -25,6 +29,7 @@ export async function GET(request: Request) {
     const selected = sessions.filter((s) => scope === "current" ? s.id === id : scope === "family" ? family.has(s.id) : workspaceKeyOf(s) === workspaceKeyOf(active));
     selected.sort((a, b) => a.id === id ? -1 : b.id === id ? 1 : b.modified.localeCompare(a.modified));
     const lanes: TaskLane[] = [];
+    const sources = new Map<string, { entries: SessionEntry[]; path: string; cwd: string }>();
     let remaining = 1200;
     for (const session of selected.slice(0, 40)) {
       if (request.signal.aborted) break;
@@ -37,6 +42,7 @@ export async function GET(request: Request) {
         }
         const manager = wrapper?.isAlive() ? wrapper.inner.sessionManager : openSessionManager(session.path);
         const entries = manager.getEntries() as SessionEntry[];
+        sources.set(session.id, { entries, path: manager.getSessionFile() ?? session.path, cwd: session.cwd });
         const lane = buildTaskLane(session, entries, Math.min(300, remaining));
         const model = getSessionSettings(entries, manager.getLeafId()).model;
         lane.model = model ? `${model.provider}/${model.modelId}` : undefined;
@@ -60,6 +66,29 @@ export async function GET(request: Request) {
         lanes.push(lane);
       } catch { lanes.push({ session, nodes: [], error: "historyError", truncated: false }); }
     }
-    return NextResponse.json({ sessionId: id, lanes, running: getRunningRpcSessionIds().filter((sid) => selected.some((s) => s.id === sid)), truncated: lanes.length < selected.length || lanes.some((l) => l.truncated) }, { headers: { "Cache-Control": "no-store" } });
+    let reviewsError: string | undefined;
+    let adoptions: ReturnType<typeof readWorkbenchState>["adoptions"] = {};
+    try { adoptions = readWorkbenchState().adoptions; } catch { reviewsError = "corrupt"; }
+    const childRuns = [...sources].flatMap(([childSessionId, source]) => {
+      const run = readSubagentRun(source.entries, childSessionId, source.path);
+      return run ? [{ childSessionId, parentSessionId: run.parentSessionId, parentToolCallId: run.parentToolCallId }] : [];
+    });
+    for (const lane of lanes) for (const node of lane.nodes) {
+      if (node.kind !== "report" || !node.childSessionId || !node.reportEntryId) continue;
+      node.reviewable = true;
+      const saved = adoptions[reportAdoptionKey(lane.session.id, node.reportEntryId)];
+      if (!saved) continue;
+      node.adoption = saved;
+      node.staleReview = true;
+      const parent = sources.get(lane.session.id), child = sources.get(node.childSessionId);
+      if (parent && child) {
+        try {
+          const evidence = buildReportEvidence({ parentSessionId: lane.session.id, childSessionId: node.childSessionId, reportEntryId: node.reportEntryId, parentEntries: parent.entries, childEntries: child.entries, childPath: child.path, cwd: child.cwd, busy: Boolean(getRpcSession(node.childSessionId)?.isRunning()), adoptions });
+          node.staleReview = evidence.staleReview;
+        } catch { /* Existing decisions remain visible as unverified if their evidence is unavailable. */ }
+      }
+    }
+    const edges = buildTaskLineageEdges(lanes, childRuns);
+    return NextResponse.json({ sessionId: id, lanes, edges, reviewsError, running: getRunningRpcSessionIds().filter((sid) => selected.some((s) => s.id === sid)), truncated: lanes.length < selected.length || lanes.some((l) => l.truncated) }, { headers: { "Cache-Control": "no-store" } });
   } catch { return NextResponse.json({ error: "historyError" }, { status: 500 }); }
 }

@@ -16,11 +16,23 @@ For a fresh composer, selecting a module copies its template locally. Configure 
 - Stage selection is not task completion. Automatic stage execution and Git code merging are separate future features.
 - New recorded events may emit a light toward their exact visible tree node. Loaded history is silent. Closing the tree destroys the light layer, hidden pages pause motion, and reduced-motion skips flight animation.
 
+## Reviewing results and recorded changes
+
+The task tree now includes **Task relationships**: solid lines show recorded delegation, dashed lines show a result returning to a parent. Click a relationship endpoint to inspect its native transcript entry. An accepted result makes its return line stronger. Missing or ambiguous relationships are omitted; similar session titles do not create a link.
+
+For a returned subtask report, choose **Pending review** to read the result and its available delivered files. **Mark reviewed** binds your decision to that exact native result and current file contents. You can then **Accept result**, or enter a reason and choose **Request changes** or **Reject result**. These are manual review records: they do not dispatch another model request, copy files or merge Git branches. Decisions survive reload. If the child resumes, the report changes or a delivered file changes, the prior decision becomes stale and needs a new review. Failed, missing, oversized or unverifiable results cannot be accepted. Older reports without a native result-entry identity remain visible but are unavailable for acceptance.
+
+**Turn changes** records future agent activity only after you enable **Record future runs** for that saved session. Select a finished run and a changed file to read its before/after contents. **Mark file reviewed** saves a mark for that immutable snapshot/file; it does not mean a newer version of the file has been reviewed. Stop and interrupted runs, truncated responses, skipped binary/oversized files and overlapping recordings have explicit coverage states. A comparison includes checkout changes between its two boundaries; external edits and concurrent tasks can be included, so it is not exclusive attribution to an agent.
+
+Recording uses Git only to read checkout identity and inventory. It does not stage, unstage, commit or change source refs. Opt-in on a runtime opened before the recorder was installed returns a visible message to reopen/reload the idle session first. The snapshot system records one settled activity including automatic retries and continuations, not a separate image for every tool call.
+
 ## Storage and compatibility
 
-Modules and per-session workflows are auxiliary UI data in `<pi agent directory>/pi-web-workbench.json`. Writes use a revision, a per-process queue, a cross-process lock and an atomic file replacement. A concurrent stale save is rejected, and invalid existing bytes are preserved. This does not rewrite Pi session history, credentials or model settings. Browser tab state remembers whether the tree is open.
+Modules, per-session workflows and manual subtask result decisions are auxiliary UI data in `<pi agent directory>/pi-web-workbench.json`. Writes use a revision, a per-process queue, a cross-process lock and an atomic file replacement. A concurrent stale save is rejected, and invalid existing bytes are preserved. This does not rewrite Pi session history, credentials or model settings. Browser tab state remembers whether the tree is open.
 
-The task graph observes existing runtimes or cached read-only session managers; it does not start model sessions. Reads and rendering are bounded (40 lanes, 300 nodes per lane, 1,200 nodes overall; disk sessions above 16 MiB have an explicit unavailable lane). Internal subagent relations are supported. Third-party orchestration tools need their own data adapter to provide equivalent task status and return edges.
+The task graph observes existing runtimes or cached read-only session managers; it does not start model sessions. Snapshots are kept in `<pi agent directory>/pi-web-turn-snapshots-v1`, with independent compressed contents and bounded retention (50 finalized runs per session, 500 overall; open records are not pruned). File review marks are in `pi-web-snapshot-reviews.json`, bounded to 5,000 recent marks. Captures currently handle UTF-8 text files up to 512 KiB, at most 2,000 files / 8 MiB per boundary and a 3-second capture budget, with a 2 MiB detail response cap. Omitted contents are never presented as deleted files. Source worktrees may be removed later; recorded contents remain available while their owning saved session and retained snapshot remain readable.
+
+Task graph reads and rendering are bounded (40 lanes, 300 nodes per lane, 1,200 nodes overall; disk sessions above 16 MiB have an explicit unavailable lane). Internal subagent relations are supported. Third-party orchestration tools need their own data adapter to provide equivalent task status and return edges.
 
 The embedded feature uses the existing Pi engine, model catalog, Skills, MCP, authentication, file viewer, personalization and completion sounds. No Magpie, Electron runtime or second model gateway was added.
 
@@ -36,4 +48,6 @@ Real provider acceptance is explicit: `LANCER_RUN_LIVE=1 node e2e/lancer-live-ha
 
 Native subagent reports are projected from SDK `custom_message` entries with type `pi-web:subagent-notification`; they are not inferred from response prose.
 
-The later plan milestones—automatic workflow execution, result acceptance, independent turn snapshots, scheduling, video processing and macOS desktop control—are not part of this first embedded workbench.
+`node e2e/lancer-result-review.mjs` verifies the review/accept/change-request flow, stale rejection, explicit delegation/return connections, opt-in snapshot controls, before/after viewing, persistent file marks and a narrow viewport using isolated HTTP fixtures. Unit/API/SDK capture tests are in `lib/workbench/*test.mjs` and `app/api/workbench/snapshots/route.test.mjs`; they verify that baselines finish before tools, final capture precedes settled notification, source staging remains unchanged, ownership and request validation hold, and interrupted or partial captures stay explicit.
+
+The later plan milestones—automatic workflow execution, scheduling, video processing and macOS desktop control—remain separate from the embedded workbench. Full Git staging/branch-review controls and automatic code merging are not provided by the result-acceptance action.

@@ -415,8 +415,8 @@ function recordResult(sessionManager: SessionManager, run: SubagentRunInfo): Sub
     ...(recorded.worktreeCleanupError ? { worktreeCleanupError: recorded.worktreeCleanupError } : {}),
     ...(recorded.worktreeExists !== undefined ? { worktreeExists: recorded.worktreeExists } : {}),
   };
-  sessionManager.appendCustomEntry(SUBAGENT_RESULT_TYPE, entry);
-  return recorded;
+  const resultEntryId = sessionManager.appendCustomEntry(SUBAGENT_RESULT_TYPE, entry);
+  return { ...recorded, resultEntryId };
 }
 
 export function createSubagentController(
