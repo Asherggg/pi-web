@@ -47,6 +47,8 @@ export function buildTaskLane(session: SessionInfo, entries: SessionEntry[], max
       node = { ...base, kind: "model", text: model };
     } else if (entry.type === "compaction" || entry.type === "branch_summary") {
       node = { ...base, kind: "summary", text: typeof entry.summary === "string" ? entry.summary.slice(0, 180) : "" };
+    } else if (entry.type === "custom_message" && entry.customType === "pi-web:subagent-notification" && entry.display !== false) {
+      node = { ...base, kind: "report", text: contentText(entry) };
     } else if (entry.type === "message") {
       const message = normalizeToolCalls(entry.message as AgentMessage);
       if (message.role === "user") node = { ...base, kind: "user", text: contentText(message) };
