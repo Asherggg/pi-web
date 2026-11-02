@@ -69,12 +69,21 @@ export function snapshotGitEnvironment(): NodeJS.ProcessEnv {
   // Strip all repository, index, config-injection and executable overrides, including case variants on Windows.
   return Object.fromEntries(Object.entries(process.env).filter(([key]) => !/^GIT_/i.test(key))) as NodeJS.ProcessEnv;
 }
-function git(cwd: string, args: string[], timeoutMs: number, maxBuffer: number, signal?: AbortSignal): Promise<Buffer> {
+function git(cwd: string, args: string[], timeoutMs: number, maxBuffer: number, signal?: AbortSignal, onStdout?: (bytes: number) => void): Promise<Buffer> {
   return new Promise((accept, reject) => {
-    execFile("git", ["-c", "core.fsmonitor=false", ...args], {
+    let closed = false;
+    let deliver: (() => void) | undefined;
+    const finish = () => {
+      if (!closed || !deliver) return;
+      const settle = deliver; deliver = undefined; settle();
+    };
+    const child = execFile("git", ["-c", "core.fsmonitor=false", ...args], {
       cwd, env: snapshotGitEnvironment(), encoding: "buffer", timeout: Math.max(1, Math.ceil(timeoutMs)),
       maxBuffer, signal, killSignal: "SIGKILL", windowsHide: true,
-    }, (error, stdout) => error ? reject(error) : accept(stdout));
+    }, (error, stdout) => { deliver = () => error ? reject(error) : accept(stdout); finish(); });
+    // Abort can invoke execFile's callback before the process releases its cwd.
+    child.once("close", () => { closed = true; finish(); });
+    if (onStdout) child.stdout?.on("data", (chunk: Buffer) => onStdout(chunk.length));
   });
 }
 export async function snapshotCheckoutRoot(cwd: string, timeoutMs = 3000, signal?: AbortSignal): Promise<string> {
@@ -169,7 +178,14 @@ export async function captureTurnSnapshot(
 ): Promise<Pick<SnapshotManifest, "capture" | "entries" | "excludedPaths">> {
   const started = performance.now();
   const timeout = AbortSignal.timeout(limits.timeoutMs);
-  const signal = parentSignal ? AbortSignal.any([parentSignal, timeout]) : timeout;
+  const inventoryController = new AbortController();
+  const signal = AbortSignal.any([timeout, inventoryController.signal, ...(parentSignal ? [parentSignal] : [])]);
+  let inventoryBytes = 0;
+  let inventoryTasks: Promise<unknown>[] = [];
+  const countInventory = (bytes: number) => {
+    inventoryBytes += bytes;
+    if (inventoryBytes > limits.maxInventoryBytes) inventoryController.abort();
+  };
   const entries: SnapshotEntry[] = [];
   const excludedPaths: string[] = [];
   const coverage = emptyCoverage("complete");
@@ -187,21 +203,23 @@ export async function captureTurnSnapshot(
   };
   try {
     check();
-    const validatedRoot = await snapshotCheckoutRoot(root, Math.max(1, limits.timeoutMs - (performance.now() - started)), signal);
-    if (pathKey(validatedRoot) !== pathKey(root)) throw new Omission("checkout-changing");
     const rootStat = await lstat(root);
+    const budget = Math.max(1, limits.timeoutMs - (performance.now() - started));
+    // Windows process startup can dominate a boundary's budget. Run these read-only
+    // queries together, but read no file contents until identity and both inventories settle.
+    const queries = [
+      snapshotCheckoutRoot(root, budget, signal),
+      git(root, ["ls-files", "-z", "--cached", "--others", "--exclude-standard"], budget, limits.maxInventoryBytes, signal, countInventory),
+      // --directory collapses ignored trees without enumerating their contents.
+      git(root, ["ls-files", "-z", "--others", "--ignored", "--exclude-standard", "--directory"], budget, limits.maxInventoryBytes, signal, countInventory),
+    ] as const;
+    inventoryTasks = [...queries];
+    const [validatedRoot, output, ignoredOutput] = await Promise.all(queries);
     check();
-    const output = await git(root, ["ls-files", "-z", "--cached", "--others", "--exclude-standard"],
-      limits.timeoutMs - (performance.now() - started), limits.maxInventoryBytes, signal);
-    check();
+    if (pathKey(validatedRoot) !== pathKey(root)) throw new Omission("checkout-changing");
+    if (output.length + ignoredOutput.length > limits.maxInventoryBytes) throw new Omission("inventory-byte-limit");
     const paths = inventoryPaths(output);
-    // --directory collapses ignored trees (e.g. node_modules/) without enumerating their files.
-    // Both inventories share the existing output, path-count and elapsed-time budgets.
-    const remaining = limits.maxInventoryBytes - output.length;
-    if (remaining < 1) throw new Omission("inventory-byte-limit");
-    const excluded = inventoryPaths(await git(root, ["ls-files", "-z", "--others", "--ignored", "--exclude-standard", "--directory"],
-      limits.timeoutMs - (performance.now() - started), remaining, signal));
-    check();
+    const excluded = inventoryPaths(ignoredOutput);
     inventoryComplete = paths.length + excluded.length <= limits.maxFiles;
     if (!inventoryComplete) { coverage.omitted["file-limit"] = paths.length + excluded.length - limits.maxFiles; coverage.state = "partial"; }
     for (const path of excluded.slice(0, Math.max(0, limits.maxFiles - paths.length))) {
@@ -239,7 +257,11 @@ export async function captureTurnSnapshot(
     if (!currentRoot.isDirectory() || !sameIdentity(rootStat, currentRoot)) throw new Omission("checkout-changing");
   } catch (error) {
     inventoryComplete = false;
-    omit(signal.aborted ? "capture-timeout-or-aborted" : error instanceof Omission ? error.message : "capture-failed");
+    omit(inventoryBytes > limits.maxInventoryBytes ? "inventory-byte-limit" : signal.aborted ? "capture-timeout-or-aborted" : error instanceof Omission ? error.message : "capture-failed");
+  } finally {
+    // On one failed query, cancel its siblings instead of leaving background Git processes.
+    inventoryController.abort();
+    await Promise.allSettled(inventoryTasks);
   }
   if (!inventoryComplete && !entries.length) coverage.state = "unavailable";
   if (coverage.state !== "complete") coverage.notes.push("Some checkout files could not be captured; omitted or unknown contents are excluded from the diff.");

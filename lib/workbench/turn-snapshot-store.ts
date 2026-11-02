@@ -287,7 +287,7 @@ export class TurnSnapshotStore {
     if (isWithin(resolveExistingPath(checkoutPath), resolveExistingPath(this.directory))) throw new TurnSnapshotError("storage-inside-checkout", 409);
   }
   async assertStorageOutside(cwd: string): Promise<void> {
-    this.assertResolvedStorageOutside(await snapshotCheckoutRoot(cwd, 1500));
+    this.assertResolvedStorageOutside(await snapshotCheckoutRoot(cwd, TURN_SNAPSHOT_LIMITS.timeoutMs));
   }
   async isEnabled(id: string): Promise<boolean> { sessionId(id); return (await this.state()).enabledSessionIds.includes(id); }
   async setEnabled(id: string, enabled: boolean, beforeWrite?: () => void | Promise<void>): Promise<TurnSnapshotList> {
@@ -338,7 +338,7 @@ export class TurnSnapshotStore {
   async begin(input: TurnSnapshotOpening, signal?: AbortSignal): Promise<TurnSnapshotHandle | null> {
     sessionId(input.sessionId); uuid(input.runtimeId); uuid(input.runId); entryId(input.beforeEntryId);
     if (!await this.isEnabled(input.sessionId)) return null;
-    const checkoutPath = await snapshotCheckoutRoot(input.cwd, 1500);
+    const checkoutPath = await snapshotCheckoutRoot(input.cwd, TURN_SNAPSHOT_LIMITS.timeoutMs);
     this.assertResolvedStorageOutside(checkoutPath);
     return this.locked(`checkout:${pathKey(checkoutPath)}`, async () => {
       const owner = processOwner();
