@@ -1,10 +1,12 @@
 import type { LocalePlugin } from "../types";
+import { workbenchMessages } from "../../workbench/messages";
 
 /** Pi Web 内置英语语言包。 */
 export const enLocale: LocalePlugin = {
   id: "en",
   label: "English",
   messages: {
+    ...workbenchMessages.en,
     "common.ok": "OK",
     "common.language": "Language",
     "common.models": "Models",

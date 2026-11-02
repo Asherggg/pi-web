@@ -1,10 +1,12 @@
 import type { LocalePlugin } from "../types";
+import { workbenchMessages } from "../../workbench/messages";
 
 /** Pi Web 內建繁體中文語系。 */
 export const zhTWLocale: LocalePlugin = {
   id: "zh-TW",
   label: "繁體中文",
   messages: {
+    ...workbenchMessages["zh-TW"],
     "common.ok": "確定",
     "common.language": "語言",
     "common.models": "模型",
