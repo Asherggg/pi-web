@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
-import { statSync, realpathSync } from "node:fs";
+import { lstatSync, realpathSync, statSync } from "node:fs";
 import { isAbsolute, relative } from "node:path";
 import { attachSessionProjectInfo, listAllSessions, mergeSessionLists, openSessionManager } from "@/lib/session-reader";
 import { getRpcSession, getRpcSessionInfos, getRunningRpcSessionIds, subagentDisplayStatus } from "@/lib/rpc-manager";
-import { getSessionSettings } from "@/lib/session-reader";
+import { getSessionSettings, readSessionHeader } from "@/lib/session-reader";
 import { workspaceKeyOf } from "@/lib/workspace-memory";
 import type { SessionEntry } from "@/lib/types";
 import { buildTaskLane, buildTaskLineageEdges, familySessionIds, type TaskLane, type TaskScope } from "@/lib/workbench/graph";
@@ -37,8 +37,16 @@ export async function GET(request: Request) {
       try {
         // Read-only observers must never create an AgentSession or prompt a model.
         const wrapper = getRpcSession(session.id);
-        if (!wrapper?.isAlive() && statSync(session.path).size > 16 * 1024 * 1024) {
-          lanes.push({ session, nodes: [], error: "historyTooLarge", truncated: true }); continue;
+        if (!wrapper?.isAlive()) {
+          const stats = lstatSync(session.path);
+          if (!stats.isFile() || stats.isSymbolicLink()) throw new Error("history-unavailable");
+          if (stats.size > 16 * 1024 * 1024) {
+            lanes.push({ session, nodes: [], error: "historyTooLarge", truncated: true }); continue;
+          }
+          const header = readSessionHeader(session.path);
+          if (!header || header.id !== session.id || header.version !== 3) {
+            lanes.push({ session, nodes: [], error: "sessionVersionUnavailable", truncated: false }); continue;
+          }
         }
         const manager = wrapper?.isAlive() ? wrapper.inner.sessionManager : openSessionManager(session.path);
         const entries = manager.getEntries() as SessionEntry[];
@@ -75,18 +83,19 @@ export async function GET(request: Request) {
     });
     for (const lane of lanes) for (const node of lane.nodes) {
       if (node.kind !== "report" || !node.childSessionId || !node.reportEntryId) continue;
-      node.reviewable = true;
-      const saved = adoptions[reportAdoptionKey(lane.session.id, node.reportEntryId)];
-      if (!saved) continue;
-      node.adoption = saved;
-      node.staleReview = true;
       const parent = sources.get(lane.session.id), child = sources.get(node.childSessionId);
-      if (parent && child) {
-        try {
-          const evidence = buildReportEvidence({ parentSessionId: lane.session.id, childSessionId: node.childSessionId, reportEntryId: node.reportEntryId, parentEntries: parent.entries, childEntries: child.entries, childPath: child.path, cwd: child.cwd, busy: Boolean(getRpcSession(node.childSessionId)?.isRunning()), adoptions });
-          node.staleReview = evidence.staleReview;
-        } catch { /* Existing decisions remain visible as unverified if their evidence is unavailable. */ }
-      }
+      if (!parent || !child) { node.reviewable = false; continue; }
+      node.reviewError = "reportUnavailable";
+      try {
+        const evidence = buildReportEvidence({ parentSessionId: lane.session.id, childSessionId: node.childSessionId, reportEntryId: node.reportEntryId, parentEntries: parent.entries, childEntries: child.entries, childPath: child.path, cwd: child.cwd, busy: Boolean(getRpcSession(node.childSessionId)?.isRunning()), adoptions });
+        node.resultEntryId = evidence.resultEntryId;
+        node.completedAt = evidence.completedAt;
+        node.reviewable = evidence.canReview;
+        node.reviewError = evidence.canReview ? undefined : "reportUnavailable";
+        const saved = adoptions[reportAdoptionKey(lane.session.id, node.reportEntryId)];
+        node.staleReview = evidence.staleReview;
+        node.adoption = saved && !evidence.staleReview ? saved : undefined;
+      } catch { node.reviewable = false; node.reviewError = "reportUnavailable"; }
     }
     const edges = buildTaskLineageEdges(lanes, childRuns);
     return NextResponse.json({ sessionId: id, lanes, edges, reviewsError, running: getRunningRpcSessionIds().filter((sid) => selected.some((s) => s.id === sid)), truncated: lanes.length < selected.length || lanes.some((l) => l.truncated) }, { headers: { "Cache-Control": "no-store" } });

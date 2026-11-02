@@ -41,6 +41,8 @@ export interface SnapshotManifest {
   phase: "before" | "after";
   capture: TurnSnapshotCapture;
   entries: SnapshotEntry[];
+  /** Ignored files and directory prefixes (trailing slash), without reading their contents. Absent in older manifests. */
+  excludedPaths?: string[];
 }
 export function emptyCoverage(state: TurnSnapshotCoverage["state"], note?: string): TurnSnapshotCoverage {
   return { state, scope: "tracked-and-nonignored-untracked", notes: note ? [note] : [], omitted: {} };
@@ -156,14 +158,20 @@ async function inspectFile(root: string, rootStat: Stats, path: string, check: (
     throw error;
   }
 }
+function inventoryPaths(output: Buffer): string[] {
+  const text = output.toString("utf8");
+  if (!Buffer.from(text).equals(output) || (text && !text.endsWith("\0"))) throw new Omission("inventory-invalid");
+  return [...new Set(text ? text.slice(0, -1).split("\0") : [])].sort();
+}
 export async function captureTurnSnapshot(
   root: string, limits: TurnSnapshotLimits, putBlob: (hash: string, bytes: Buffer) => Promise<void>,
   parentSignal?: AbortSignal,
-): Promise<{ capture: TurnSnapshotCapture; entries: SnapshotEntry[] }> {
+): Promise<Pick<SnapshotManifest, "capture" | "entries" | "excludedPaths">> {
   const started = performance.now();
   const timeout = AbortSignal.timeout(limits.timeoutMs);
   const signal = parentSignal ? AbortSignal.any([parentSignal, timeout]) : timeout;
   const entries: SnapshotEntry[] = [];
+  const excludedPaths: string[] = [];
   const coverage = emptyCoverage("complete");
   let inventoryComplete = false;
   let fileCount = 0;
@@ -186,11 +194,20 @@ export async function captureTurnSnapshot(
     const output = await git(root, ["ls-files", "-z", "--cached", "--others", "--exclude-standard"],
       limits.timeoutMs - (performance.now() - started), limits.maxInventoryBytes, signal);
     check();
-    const text = output.toString("utf8");
-    if (!Buffer.from(text).equals(output) || (text && !text.endsWith("\0"))) throw new Omission("inventory-invalid");
-    const paths = [...new Set(text ? text.slice(0, -1).split("\0") : [])].sort();
-    inventoryComplete = paths.length <= limits.maxFiles;
-    if (!inventoryComplete) { coverage.omitted["file-limit"] = paths.length - limits.maxFiles; coverage.state = "partial"; }
+    const paths = inventoryPaths(output);
+    // --directory collapses ignored trees (e.g. node_modules/) without enumerating their files.
+    // Both inventories share the existing output, path-count and elapsed-time budgets.
+    const remaining = limits.maxInventoryBytes - output.length;
+    if (remaining < 1) throw new Omission("inventory-byte-limit");
+    const excluded = inventoryPaths(await git(root, ["ls-files", "-z", "--others", "--ignored", "--exclude-standard", "--directory"],
+      limits.timeoutMs - (performance.now() - started), remaining, signal));
+    check();
+    inventoryComplete = paths.length + excluded.length <= limits.maxFiles;
+    if (!inventoryComplete) { coverage.omitted["file-limit"] = paths.length + excluded.length - limits.maxFiles; coverage.state = "partial"; }
+    for (const path of excluded.slice(0, Math.max(0, limits.maxFiles - paths.length))) {
+      if (!safeSnapshotPath(path.endsWith("/") ? path.slice(0, -1) : path)) { inventoryComplete = false; omit("unsafe-excluded-path"); continue; }
+      excludedPaths.push(path);
+    }
     for (const path of paths.slice(0, limits.maxFiles)) {
       check();
       if (!safeSnapshotPath(path)) { inventoryComplete = false; omit("unsafe-or-nested-path"); continue; }
@@ -226,7 +243,7 @@ export async function captureTurnSnapshot(
   }
   if (!inventoryComplete && !entries.length) coverage.state = "unavailable";
   if (coverage.state !== "complete") coverage.notes.push("Some checkout files could not be captured; omitted or unknown contents are excluded from the diff.");
-  return { entries, capture: {
+  return { entries, excludedPaths, capture: {
     state: coverage.state, capturedAt: new Date().toISOString(), inventoryComplete,
     fileCount, byteCount, durationMs: Math.ceil(performance.now() - started), coverage,
   } };

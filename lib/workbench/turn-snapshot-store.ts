@@ -409,10 +409,19 @@ export class TurnSnapshotStore {
       if (e.state !== "text" || typeof e.blob !== "string" || !/^[a-f0-9]{64}$/.test(e.blob) || typeof e.executable !== "boolean") throw new TurnSnapshotError("corrupt", 409);
       return { path: e.path, state: "text", blob: e.blob, size: number(e.size, this.limits.maxFileBytes), executable: e.executable };
     });
+    let excludedPaths: string[] | undefined;
+    if (v.excludedPaths !== undefined) {
+      if (!Array.isArray(v.excludedPaths) || v.entries.length + v.excludedPaths.length > this.limits.maxFiles) throw new TurnSnapshotError("corrupt", 409);
+      excludedPaths = v.excludedPaths.map((path) => {
+        if (typeof path !== "string" || !safeSnapshotPath(path.endsWith("/") ? path.slice(0, -1) : path)) throw new TurnSnapshotError("corrupt", 409);
+        return path;
+      });
+      if (new Set(excludedPaths).size !== excludedPaths.length) throw new TurnSnapshotError("corrupt", 409);
+    }
     if (new Set(entries.map((e) => e.path)).size !== entries.length
       || entries.filter((e) => e.state === "text").length !== storedCapture.fileCount
       || entries.reduce((total, e) => total + (e.state === "text" ? e.size : 0), 0) !== storedCapture.byteCount) throw new TurnSnapshotError("corrupt", 409);
-    return { version: 1, snapshotId: record.snapshotId, phase, capture: storedCapture, entries };
+    return { version: 1, snapshotId: record.snapshotId, phase, capture: storedCapture, entries, excludedPaths };
   }
   private async content(id: string, entry: SnapshotEntry | undefined): Promise<string | null> {
     if (!entry || entry.state === "missing") return null;
@@ -449,6 +458,15 @@ export class TurnSnapshotStore {
       for (const path of [...new Set([...left.keys(), ...right.keys()])].sort()) {
         const b = left.get(path); const a = right.get(path);
         if (b?.state === "omitted" || a?.state === "omitted" || (!b && !before.capture.inventoryComplete) || (!a && !after.capture.inventoryComplete)) continue;
+        // A complete ls-files inventory proves absence only outside its immutable ignored scope.
+        // Older recordings lack that scope, so only explicit captured states can establish absence.
+        const unknownScope = (manifest: SnapshotManifest) => manifest.excludedPaths === undefined
+          || manifest.excludedPaths.some((excluded) => path === excluded || (excluded.endsWith("/") && path.startsWith(excluded)));
+        if ((!b && unknownScope(before)) || (!a && unknownScope(after))) {
+          result.coverage.state = "partial";
+          result.coverage.omitted["excluded-scope"] = (result.coverage.omitted["excluded-scope"] ?? 0) + 1;
+          continue;
+        }
         const hasBefore = b?.state === "text"; const hasAfter = a?.state === "text";
         if ((!hasBefore && !hasAfter) || (hasBefore && hasAfter && b.blob === a.blob && b.executable === a.executable)) continue;
         let row: TurnSnapshotFile;
@@ -467,6 +485,7 @@ export class TurnSnapshotStore {
         result.coverage.state = "partial";
         result.coverage.notes.push("The response byte limit omitted some changed files.");
       }
+      if (result.coverage.omitted["excluded-scope"]) result.coverage.notes.push("Files excluded or with unknown ignore coverage in either capture were omitted from the comparison.");
       if (result.coverage.omitted["blob-unavailable"]) result.coverage.notes.push("Some stored contents are missing or corrupt and were omitted.");
       return result;
     });

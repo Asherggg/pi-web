@@ -25,6 +25,7 @@ export async function updateWorkbenchState(
       if (revision !== current.revision) throw new WorkbenchError("conflict", 409);
       const next = applyWorkbenchAction(current, input);
       beforeWrite?.();
+      if (next === current) return next;
       const text = JSON.stringify(next, null, 2) + "\n";
       if (Buffer.byteLength(text) > 4 * 1024 * 1024) throw new WorkbenchError("limit", 413);
       writePrivateFileAtomicSync(path, text);

@@ -1,5 +1,5 @@
 "use client";
-import { useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { TaskLineageOverlay } from "./TaskLineageOverlay";
 import { TurnSnapshotPanel } from "./TurnSnapshotPanel";
 import type { SessionInfo } from "@/lib/types";
@@ -22,6 +22,12 @@ export function TaskTreePanel({ graph, loading, error, scope, onScope, onRefresh
   const [review, setReview] = useState<ReviewTarget | null>(null);
   const [reviewNote, setReviewNote] = useState("");
   const [reviewBusy, setReviewBusy] = useState(false);
+  const reviewGeneration = useRef(0);
+  const invalidateReview = useCallback(() => { reviewGeneration.current++; }, []);
+  useEffect(() => {
+    invalidateReview(); setReview(null); setActionError(null);
+    return invalidateReview;
+  }, [graph?.sessionId, scope, invalidateReview]);
   const files = graph?.lanes.flatMap((lane) => lane.nodes.filter((n) => n.kind === "file")) ?? [];
   const fileMap = new Map(files.map((file) => [file.filePath!, file]));
   const openNode = (node: TaskNode, session: SessionInfo) => {
@@ -31,6 +37,7 @@ export function TaskTreePanel({ graph, loading, error, scope, onScope, onRefresh
   };
   const beginReview = async (node: TaskNode, lane: TaskLane) => {
     if (!node.childSessionId || !node.reportEntryId) return;
+    const token = ++reviewGeneration.current;
     setActionError(null);
     try {
       const query = new URLSearchParams({ parentSessionId: lane.session.id, childSessionId: node.childSessionId, reportEntryId: node.reportEntryId });
@@ -39,9 +46,10 @@ export function TaskTreePanel({ graph, loading, error, scope, onScope, onRefresh
       if (!response.ok) throw new Error(t(`workbench.${body.error ?? "reviewError"}`));
       const current = body.evidence as ReportEvidence;
       if (!current.fingerprint || !current.resultEntryId) throw new Error(t("workbench.reportUnavailable"));
+      if (reviewGeneration.current !== token) return;
       setReview({ parentSessionId: lane.session.id, childSessionId: node.childSessionId, evidence: current, revision: body.revision });
       setReviewNote(current.adoption?.note ?? "");
-    } catch (cause) { setActionError(cause instanceof Error ? cause.message : String(cause)); }
+    } catch (cause) { if (reviewGeneration.current === token) setActionError(cause instanceof Error ? cause.message : String(cause)); }
   };
   const saveReview = async (status: ReportAdoptionStatus) => {
     if (!review || status === "pending") return;

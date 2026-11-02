@@ -86,10 +86,10 @@ export function buildReportEvidence(input: {
   if (data.version !== 1 || !["completed", "failed", "aborted"].includes(String(data.status)) || structured.details.status !== data.status) throw new WorkbenchError("reportMismatch", 409);
   const latest = !input.busy && run.resultEntryId === result.id && run.completedAt === completedAt && run.status === data.status;
   const files = reportFiles(input.childEntries, resultIndex, input.cwd);
+  const rawText = typeof data.result === "string" ? data.result : text(structured.content);
+  const truncated = rawText.length > 128 * 1024;
   const fingerprint = createHash("sha256").update(JSON.stringify({ report, result, files })).digest("hex");
   const adoption = input.adoptions[reportAdoptionKey(input.parentSessionId, input.reportEntryId)];
   const staleReview = Boolean(adoption && (adoption.fingerprint !== fingerprint || adoption.resultEntryId !== result.id || !latest));
-  const rawText = typeof data.result === "string" ? data.result : text(structured.content);
-  const truncated = rawText.length > 128 * 1024;
   return { parentSessionId: input.parentSessionId, childSessionId: input.childSessionId, reportEntryId: report.id, resultEntryId: result.id, completedAt, status: String(data.status), text: rawText.slice(0, 128 * 1024), truncated, ...(typeof data.error === "string" ? { error: data.error.slice(0, 4000) } : {}), fingerprint, files, ...(adoption ? { adoption } : {}), staleReview, latest, canReview: latest };
 }

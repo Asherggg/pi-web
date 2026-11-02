@@ -9,7 +9,7 @@ export interface TaskNode {
   active?: boolean;
   text: string; timestamp: string; error?: boolean; filePath?: string;
   reportEntryId?: string; resultEntryId?: string; toolCallIds?: string[]; childSessionId?: string; completedAt?: string;
-  reviewable?: boolean; adoption?: ReportAdoption; staleReview?: boolean;
+  reviewable?: boolean; reviewError?: string; adoption?: ReportAdoption; staleReview?: boolean;
 }
 export interface TaskLane { session: SessionInfo; nodes: TaskNode[]; error?: string; truncated: boolean; model?: string }
 export interface TaskLineageEdge {

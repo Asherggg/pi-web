@@ -44,6 +44,8 @@ import { createSubagentMcpPolicyExtension } from "./mcp-read-only-policy";
 import { resolveShellTools } from "./powershell-settings";
 import { isBuiltInSubagentsEnabled, readSubagentSettings } from "./subagent-settings";
 import { SubagentQueue } from "./subagent-queue";
+import { createTurnSnapshotExtension } from "./workbench/turn-snapshot-extension";
+import { TURN_SNAPSHOT_EXTENSION_NAME } from "./workbench/turn-snapshot";
 import { addWorktree, removeWorktree } from "./worktree";
 import { randomUUID } from "node:crypto";
 import { existsSync, writeFileSync } from "node:fs";
@@ -503,6 +505,7 @@ export function createSubagentController(
           })
         : undefined;
       const extensionFactories = [
+        { name: TURN_SNAPSHOT_EXTENSION_NAME, factory: createTurnSnapshotExtension() },
         ...(codemodeExtension ? [codemodeExtension] : []),
         ...(mcp ? [...mcp.extensions, createSubagentMcpPolicyExtension(() => mcpScope)] : []),
         ...(skillsBinding.loaderOptions.extensionFactories ?? []),
