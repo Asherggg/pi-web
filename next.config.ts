@@ -19,6 +19,10 @@ const gfmAutolinkEmailLoader = join(configDir, "lib/gfm-autolink-email-loader.cj
 const nextConfig: NextConfig = {
   outputFileTracingRoot: configDir,
   experimental: {
+    // The custom email-regex loader disables Next's automatic build worker selection.
+    // Keep release compilations isolated and reduce peak memory alongside a dev server.
+    webpackBuildWorker: true,
+    webpackMemoryOptimizations: true,
     // proxy.ts matches /api/:path*, and Next buffers the request body whenever
     // a proxy is present, capped at 10 MB by default. The upload route accepts
     // up to 100 MB per request, so raise the buffer above that or large uploads
