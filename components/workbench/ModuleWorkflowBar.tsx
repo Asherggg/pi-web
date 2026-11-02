@@ -70,11 +70,13 @@ export function ModuleWorkflowBar({ sessionId, draftWorkflow, onDraftWorkflowCha
   return <div className="lancer-workflow-bar" data-workbench-source>
     <div className="lancer-workbench-toolbar">
       {sessionId && <button type="button" onClick={onToggleTree} aria-expanded={treeOpen} aria-controls="lancer-task-tree">{t("workbench.tree")}</button>}
-      <select aria-label={t("workbench.module")} value={selectedModule && !selectedModule.deleted && !workflow?.disabled ? selectedModule.id : ""} disabled={disabled} onChange={(e) => { const moduleId = e.target.value || null; void perform(async () => {
+      <select aria-label={t("workbench.module")} value={selectedModule && !workflow?.disabled ? selectedModule.id : ""} disabled={disabled} onChange={(e) => { const moduleId = e.target.value || null; void perform(async () => {
         if (sessionId) await mutate({ type: "assign", sessionId, moduleId });
         else if (state) onDraftWorkflowChange?.(assignDraftModule(state, workflow ?? null, moduleId));
       }); }}>
-        <option value="">{t("workbench.normal")}</option>{state?.modules.filter((m) => !m.deleted).map((m) => <option key={m.id} value={m.id}>{moduleName(m)}</option>)}
+        <option value="">{t("workbench.normal")}</option>
+        {selectedModule?.deleted && !workflow?.disabled && <option disabled value={selectedModule.id}>{moduleName(selectedModule)} · {t("workbench.archived")}</option>}
+        {state?.modules.filter((m) => !m.deleted).map((m) => <option key={m.id} value={m.id}>{moduleName(m)}</option>)}
       </select>
       <button type="button" aria-expanded={manage} onClick={() => setManage(!manage)}>{t("workbench.manage")}</button>
       {workflow && !workflow.disabled && selectedModule && !selectedModule.deleted && <button type="button" disabled={disabled} onClick={() => setEditor({ module: selectedModule, template: false })}>{t("workbench.configure")}</button>}

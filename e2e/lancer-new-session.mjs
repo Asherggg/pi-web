@@ -56,6 +56,15 @@ try {
   const modulePicker = page.getByLabel("Module", { exact: true });
   await modulePicker.waitFor({ timeout: 30000 });
   await modulePicker.selectOption("development");
+  // An archived draft module stays visible as the selected disabled option, so ordinary chat remains selectable.
+  state.modules[0].deleted = true;
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.getByText("This module is archived.", { exact: false }).waitFor();
+  await modulePicker.selectOption("");
+  assert.equal(await modulePicker.inputValue(), "");
+  state.modules[0].deleted = false;
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await modulePicker.selectOption("development");
   await page.getByRole("button", { name: "Configure stages", exact: true }).click();
   await page.getByLabel("Goal", { exact: true }).fill("A new-session-specific goal");
   await page.getByRole("button", { name: "Save", exact: true }).click();
@@ -81,7 +90,7 @@ try {
   assert.equal(state.sessions[id].activeStep, 0);
   assert.equal(state.modules[0].steps[0].goal, "Template goal");
   assert.deepEqual(pageErrors, []);
-  writeFileSync(resolve(out, "NEW_SESSION_BROWSER_RESULT.json"), JSON.stringify({ passed: true, fixtureBacked: true, created, writes, order, pageErrors, checks: ["new-session-module-picker", "local-stage-editor", "template-copy", "no-start-before-send", "stage-model", "load-task", "reload-preserves-plan", "reload-preserves-stage-model", "reload-task-from-saved-stage", "persist-before-first-prompt", "promotion-keeps-plan"] }, null, 2));
+  writeFileSync(resolve(out, "NEW_SESSION_BROWSER_RESULT.json"), JSON.stringify({ passed: true, fixtureBacked: true, created, writes, order, pageErrors, checks: ["new-session-module-picker", "archived-module-exit", "local-stage-editor", "template-copy", "no-start-before-send", "stage-model", "load-task", "reload-preserves-plan", "reload-preserves-stage-model", "reload-task-from-saved-stage", "persist-before-first-prompt", "promotion-keeps-plan"] }, null, 2));
   console.log("PASS: new-session module selection, draft restoration, and workflow inheritance before the first prompt");
 } catch (error) {
   writeFileSync(resolve(out, "NEW_SESSION_BROWSER_FAILURE.json"), JSON.stringify({ error: String(error), pageErrors, order, body: (await page.locator("body").innerText()).slice(-9000) }, null, 2));
