@@ -15,6 +15,7 @@ Local browser UI for the [pi coding agent](https://github.com/earendil-works/pi)
 - **Project file tools**: browse and upload files, inspect Git diffs, and preview source, Markdown, images, audio, PDFs, and DOCX files with automatic refresh.
 - **Git worktrees**: switch checkouts from the sidebar while keeping sessions from the same repository grouped together.
 - **Session map**: explore workspace conversations and forks as a draggable, zoomable canvas, synchronized with native Pi sessions.
+- **[Lancer workbench](./docs/lancer-workbench.md)**: dock a task tree beside the conversation, configure module stages with models and skills, load stage tasks into protected drafts, and follow recorded events and delivered files.
 - **Web-based configuration**: manage provider login and API keys, models, model tests, plugin packages, and skills without leaving Pi Web.
 - **Personalization**: choose a local background image, adjust its fit and visibility, and select or upload a completion sound.
 - **English, Simplified Chinese, and Traditional Chinese UI**: Pi Web follows the browser language initially and provides a language switcher in the top bar.

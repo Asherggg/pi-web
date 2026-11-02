@@ -106,7 +106,8 @@ interface Props {
 
 export interface ChatInputHandle {
   insertText: (text: string) => void;
-  insertIfEmpty: (text: string) => void;
+  insertIfEmpty: (text: string) => boolean;
+  hasDraft: () => boolean;
   replaceMessage: (message: UserMessage) => void;
   prependText: (text: string) => void;
   addImages: (files: File[]) => void;
@@ -754,10 +755,13 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
   attachedImagesRef.current = attachedImages;
 
   useImperativeHandle(ref, () => ({
+    hasDraft() {
+      return Boolean((textareaRef.current?.value ?? valueRef.current).trim() || attachedImagesRef.current.length || pendingImageCountRef.current);
+    },
     insertIfEmpty(text: string) {
       const ta = textareaRef.current;
-      const current = ta ? ta.value : value;
-      if (current.trim()) return;
+      const current = ta ? ta.value : valueRef.current;
+      if (current.trim() || attachedImagesRef.current.length || pendingImageCountRef.current) return false;
       valueRef.current = text;
       setValue(text);
       setAtQuery(null);
@@ -766,6 +770,7 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
         ta.focus();
         autoGrowTextarea(ta);
       });
+      return true;
     },
     replaceMessage(message: UserMessage) {
       const ta = textareaRef.current;

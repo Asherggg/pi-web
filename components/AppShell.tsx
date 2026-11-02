@@ -2799,6 +2799,13 @@ export function AppShell() {
               onOpenFile={handleOpenLinkedFile}
               onFilesUploaded={handleExplorerRefresh}
               onOpenSubagent={handleOpenSubagentTab}
+              onWorkbenchNavigate={async (target, entryId, navigateBranch) => {
+                if (navigateBranch) await handleSessionMapActivate(target, entryId, false);
+                if (activeSessionIdRef.current === target.id) setSearchTarget({ sessionId: target.id, entryId });
+                else handleSelectSession(target, false, entryId);
+              }}
+              onWorkbenchFork={handleSessionMapFork}
+              onWorkbenchFullMap={handleOpenSessionMap}
               onAskInNewChat={handleAskInNewChat}
               quoteSelectionEnabled={quoteSelectionEnabled}
               initialPrompt={pendingQuotePrompt?.sessionId === selectedSession?.id ? pendingQuotePrompt?.text : undefined}

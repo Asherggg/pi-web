@@ -2338,7 +2338,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     }
   }, [isCompacting, loadContext]);
 
-  const handleModelChange = useCallback(async (provider: string, modelId: string) => {
+  const handleModelChange = useCallback(async (provider: string, modelId: string): Promise<boolean> => {
     if (isNew) {
       const selectedModel = { provider, modelId };
       newSessionModelOverrideRef.current = selectedModel;
@@ -2351,16 +2351,17 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         );
       }
       const sid = sessionIdRef.current ?? await ensuringNewSessionRef.current;
-      if (!sid) return;
+      if (!sid) return true;
       try {
         await sendAgentCommand(sid, { type: "set_model", provider, modelId });
+        return true;
       } catch (e) {
         console.error("Failed to set model:", e);
+        return false;
       }
-      return;
     }
     const sid = sessionIdRef.current;
-    if (!sid || modelSwitchPendingRef.current) return;
+    if (!sid || modelSwitchPendingRef.current) return false;
     const target = { provider, modelId };
     const previousOverride = currentModelOverride;
     modelSwitchPendingRef.current = true;
@@ -2373,6 +2374,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       // the model, thinking level, and active leaf all advance together.
       modelSwitchPendingRef.current = false;
       await loadSession(sid);
+      return true;
     } catch (e) {
       console.error("Failed to set model:", e);
       modelSwitchPendingRef.current = false;
@@ -2384,6 +2386,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       // A failed response can still follow a server-side write (for example, a
       // dropped connection), so let the session file settle the displayed model.
       await loadSession(sid, false, true);
+      return false;
     } finally {
       modelSwitchPendingRef.current = false;
       setModelSwitching(false);
