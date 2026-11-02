@@ -33,7 +33,7 @@ export function LancerWorkbench(props: Props) {
   return <div ref={root} className="lancer-workbench">
     {(props.session || props.newSessionCwd) && <ModuleWorkflowBar key={id || props.newSessionDraftKey} sessionId={id || null} draftWorkflow={props.draftWorkflow} onDraftWorkflowChange={props.onDraftWorkflowChange} cwd={props.session?.cwd ?? props.newSessionCwd!} busy={props.busy} models={props.models} currentModel={props.currentModel} onModelChange={props.onModelChange} composerRef={props.composerRef} treeOpen={open} onToggleTree={() => setTreeOpen(!open)} />}
     <div className="lancer-workbench-body"><div className="lancer-conversation">{props.children}</div>
-      {open && id && <TaskTreePanel graph={data} loading={loading} error={error} scope={scope} onScope={setScope} onRefresh={refresh} onClose={() => setTreeOpen(false)} onNavigate={props.onNavigate} onFork={props.onFork} onOpenFile={props.onOpenFile} onFullMap={props.onFullMap} />}
+      {open && id && <TaskTreePanel key={id} graph={data} loading={loading} error={error} scope={scope} onScope={setScope} onRefresh={refresh} onClose={() => setTreeOpen(false)} onNavigate={props.onNavigate} onFork={props.onFork} onOpenFile={props.onOpenFile} onFullMap={props.onFullMap} />}
     </div>
   </div>;
 }

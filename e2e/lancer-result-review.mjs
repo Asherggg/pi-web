@@ -14,6 +14,13 @@ const child = { ...session, id: childId, name: "Review worker", relation: { kind
 const evidence = { parentSessionId: id, childSessionId: childId, reportEntryId: "report", resultEntryId: "result", completedAt: session.created, status: "completed", text: "Verified report with two findings.\nThis is the full worker result.", fingerprint: "a".repeat(64), files: [], staleReview: false, latest: true, canReview: true };
 let adoption, revision = 0, rejectNext = false, promptRequests = 0;
 const decisions = [], errors = [];
+let nextGraphGate, nextReviewGate;
+function responseGate() {
+  let release, entered;
+  const wait = new Promise((resolve) => { release = resolve; });
+  const started = new Promise((resolve) => { entered = resolve; });
+  return { wait, started, release, entered };
+}
 let recording = false;
 let reviewedPaths = [];
 const snapId = "11111111-1111-4111-8111-111111111111";
@@ -34,7 +41,11 @@ await page.route("**/api/**", async (route) => {
   const path = new URL(route.request().url()).pathname; const method = route.request().method();
   const body = method === "POST" && route.request().postData() ? route.request().postDataJSON() : {};
   const json = (value, status = 200) => route.fulfill({ status, json: value });
-  if (path === "/api/workbench/graph") return json(graph());
+  if (path === "/api/workbench/graph") {
+    const gate = nextGraphGate; nextGraphGate = undefined;
+    if (gate) { gate.entered(); await gate.wait; }
+    return json(graph());
+  }
   if (path === "/api/workbench/reviews") {
     if (method === "POST") {
       if (rejectNext) { rejectNext = false; evidence.fingerprint = "b".repeat(64); evidence.staleReview = true; return json({ error: "reportChanged" }, 409); }
@@ -43,6 +54,8 @@ await page.route("**/api/**", async (route) => {
       decisions.push(body.status); revision++;
       adoption = { reportKey: `${id}|report`, parentSessionId: id, childSessionId: childId, resultEntryId: "result", fingerprint: body.fingerprint, status: body.status, updatedAt: session.modified, ...(body.note ? { note: body.note } : {}) };
       evidence.staleReview = false;
+      const gate = nextReviewGate; nextReviewGate = undefined;
+      if (gate) { gate.entered(); await gate.wait; }
     }
     return json({ evidence: { ...evidence, adoption }, revision });
   }
@@ -85,7 +98,16 @@ try {
   const panel = page.getByRole("region", { name: "Review subtask result" });
   await panel.waitFor();
   assert.equal(await panel.getByRole("button", { name: "Accept result", exact: true }).isDisabled(), true);
-  await panel.getByRole("button", { name: "Mark reviewed", exact: true }).click();
+  await panel.getByRole("textbox").fill("Keep this review open during graph refresh.");
+  const graphGate = responseGate(); nextGraphGate = graphGate;
+  try {
+    await panel.getByRole("button", { name: "Mark reviewed", exact: true }).click();
+    await graphGate.started;
+    await page.locator('[data-task-edge="dispatch-edge"]').waitFor({ state: "detached" });
+    assert.equal(await panel.isVisible(), true, "graph refresh must not close the review");
+    assert.equal(await panel.getByRole("textbox").inputValue(), "Keep this review open during graph refresh.");
+  } finally { graphGate.release(); }
+  await page.locator('[data-task-edge="dispatch-edge"]').waitFor({ state: "attached" });
   await panel.getByRole("button", { name: "Accept result", exact: true }).click();
   await panel.getByText("Accepted", { exact: true }).waitFor();
   await panel.getByRole("button", { name: "Cancel", exact: true }).click();
@@ -93,8 +115,20 @@ try {
   await page.locator(".lancer-review-button").getByText("Accepted", { exact: true }).waitFor();
   await page.locator(".lancer-review-button").click();
   const currentPanel = page.getByRole("region", { name: "Review subtask result" });
-  await currentPanel.getByLabel("Verification notes / requested changes", { exact: true }).fill("Please add the missing benchmark.");
-  await currentPanel.getByRole("button", { name: "Request changes", exact: true }).click();
+  await currentPanel.getByRole("textbox").fill("Please add the missing benchmark.");
+  const reviewGate = responseGate(); nextReviewGate = reviewGate;
+  const saved = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/workbench/reviews" && response.request().method() === "POST");
+  try {
+    await currentPanel.getByRole("button", { name: "Request changes", exact: true }).click();
+    await reviewGate.started;
+    const scope = page.getByRole("combobox", { name: "Task tree", exact: true });
+    await scope.selectOption(await scope.inputValue() === "current" ? "family" : "current");
+    await currentPanel.waitFor({ state: "detached" });
+  } finally { reviewGate.release(); }
+  await saved;
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  assert.equal(await currentPanel.count(), 0, "a save from the previous scope must not reopen its review");
+  await page.locator(".lancer-review-button").click();
   await currentPanel.getByText("Changes requested", { exact: true }).waitFor();
   await currentPanel.getByRole("button", { name: "Cancel", exact: true }).click();
   await page.locator(".lancer-review-button").click();
@@ -125,7 +159,7 @@ try {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.screenshot({ path: resolve(out, "result-review-desktop.png") });
   assert.deepEqual(decisions, ["reviewed", "accepted", "needs_changes"]); assert.equal(promptRequests, 0); assert.deepEqual(errors, []);
-  writeFileSync(resolve(out, "REVIEW_BROWSER_RESULT.json"), JSON.stringify({ passed: true, fixtureBacked: true, decisions, promptRequests, errors, edgeCount: 2, checks: ["dispatch-and-return-edges", "review-before-accept", "acceptance-survives-reload", "changes-require-note", "stale-evidence-rejected", "mobile-layout", "no-automatic-dispatch", "opt-in-turn-captures", "immutable-before-after-view", "file-review-survives-reload"] }, null, 2));
+  writeFileSync(resolve(out, "REVIEW_BROWSER_RESULT.json"), JSON.stringify({ passed: true, fixtureBacked: true, decisions, promptRequests, errors, edgeCount: 2, checks: ["review-survives-pending-graph-refresh", "scope-change-discards-delayed-save-response", "dispatch-and-return-edges", "review-before-accept", "acceptance-survives-reload", "changes-require-note", "stale-evidence-rejected", "mobile-layout", "no-automatic-dispatch", "opt-in-turn-captures", "immutable-before-after-view", "file-review-survives-reload"] }, null, 2));
   console.log("PASS: result review, adoption, persisted status, stale rejection and two lineage edges; zero prompts");
 } catch (error) {
   writeFileSync(resolve(out, "REVIEW_BROWSER_FAILURE.json"), JSON.stringify({ error: String(error), errors, body: (await page.locator("body").innerText()).slice(-8000) }, null, 2));

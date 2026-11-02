@@ -25,9 +25,9 @@ export function TaskTreePanel({ graph, loading, error, scope, onScope, onRefresh
   const reviewGeneration = useRef(0);
   const invalidateReview = useCallback(() => { reviewGeneration.current++; }, []);
   useEffect(() => {
-    invalidateReview(); setReview(null); setActionError(null);
+    invalidateReview(); setReview(null); setReviewNote(""); setReviewBusy(false); setActionError(null);
     return invalidateReview;
-  }, [graph?.sessionId, scope, invalidateReview]);
+  }, [scope, invalidateReview]);
   const files = graph?.lanes.flatMap((lane) => lane.nodes.filter((n) => n.kind === "file")) ?? [];
   const fileMap = new Map(files.map((file) => [file.filePath!, file]));
   const openNode = (node: TaskNode, session: SessionInfo) => {
@@ -53,18 +53,20 @@ export function TaskTreePanel({ graph, loading, error, scope, onScope, onRefresh
   };
   const saveReview = async (status: ReportAdoptionStatus) => {
     if (!review || status === "pending") return;
+    const token = ++reviewGeneration.current;
     setReviewBusy(true); setActionError(null);
     try {
       const response = await fetch("/api/workbench/reviews", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ revision: review.revision, parentSessionId: review.parentSessionId, childSessionId: review.childSessionId, reportEntryId: review.evidence.reportEntryId, resultEntryId: review.evidence.resultEntryId, fingerprint: review.evidence.fingerprint, status, note: reviewNote }) });
       const body = await response.json();
+      if (reviewGeneration.current !== token) return;
       if (!response.ok) {
         if (response.status === 409) setReview(null);
         throw new Error(t(`workbench.${body.error ?? "storage"}`));
       }
       setReview({ ...review, evidence: body.evidence, revision: body.revision });
       onRefresh();
-    } catch (cause) { setActionError(cause instanceof Error ? cause.message : String(cause)); }
-    finally { setReviewBusy(false); }
+    } catch (cause) { if (reviewGeneration.current === token) setActionError(cause instanceof Error ? cause.message : String(cause)); }
+    finally { if (reviewGeneration.current === token) setReviewBusy(false); }
   };
   const focusEdge = (sessionId: string, entryId: string) => {
     const lane = graph?.lanes.find((item) => item.session.id === sessionId);
