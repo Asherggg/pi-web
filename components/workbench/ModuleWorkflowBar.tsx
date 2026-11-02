@@ -2,17 +2,19 @@
 import { useEffect, useRef, useState } from "react";
 import { useI18n } from "@/hooks/useI18n";
 import { useModuleWorkflow } from "@/hooks/useModuleWorkflow";
-import { workflowPrompt, WorkbenchError, type WorkbenchModule } from "@/lib/workbench/workflow";
+import { workflowPrompt, WorkbenchError, type WorkbenchModule, type SessionWorkflow } from "@/lib/workbench/workflow";
+import { assignDraftModule } from "@/lib/workbench/draft-workflow";
 import type { ChatInputHandle } from "../ChatInput";
 import { ModuleWorkflowEditor, type WorkflowModel, type WorkflowSkill } from "./ModuleWorkflowEditor";
-export function ModuleWorkflowBar({ sessionId, cwd, busy, models, currentModel, onModelChange, composerRef, treeOpen, onToggleTree }: {
-  sessionId: string; cwd: string; busy: boolean; models: WorkflowModel[];
+export function ModuleWorkflowBar({ sessionId, draftWorkflow, onDraftWorkflowChange, cwd, busy, models, currentModel, onModelChange, composerRef, treeOpen, onToggleTree }: {
+  sessionId: string | null; draftWorkflow?: SessionWorkflow | null; onDraftWorkflowChange?: (workflow: SessionWorkflow | null) => void;
+  cwd: string; busy: boolean; models: WorkflowModel[];
   currentModel?: { provider: string; modelId: string } | null;
   onModelChange: (provider: string, modelId: string) => Promise<boolean>;
   composerRef: React.RefObject<ChatInputHandle | null>; treeOpen: boolean; onToggleTree: () => void;
 }) {
   const { t, locale } = useI18n();
-  const { state, error: storageError, busy: saving, mutate } = useModuleWorkflow(sessionId);
+  const { state, error: storageError, busy: saving, mutate } = useModuleWorkflow(sessionId ?? "draft");
   const [error, setError] = useState<string | null>(null);
   const [working, setWorking] = useState(false);
   const [manage, setManage] = useState(false);
@@ -30,7 +32,11 @@ export function ModuleWorkflowBar({ sessionId, cwd, busy, models, currentModel, 
     }).catch(() => { if (!controller.signal.aborted) setSkillsLoaded(false); });
     return () => controller.abort();
   }, [cwd]);
-  const workflow = state?.sessions[sessionId];
+  const workflow = sessionId ? state?.sessions[sessionId] : draftWorkflow;
+  const saveWorkflow = async (next: SessionWorkflow) => {
+    if (sessionId) await mutate({ type: "save-workflow", sessionId, workflow: next });
+    else onDraftWorkflowChange?.(next);
+  };
   const selectedModule = state?.modules.find((m) => m.id === workflow?.moduleId);
   const disabled = busy || saving || working || !state;
   const perform = async (operation: () => Promise<unknown>) => {
@@ -47,7 +53,8 @@ export function ModuleWorkflowBar({ sessionId, cwd, busy, models, currentModel, 
       const switched = await onModelChange(step.model.provider, step.model.modelId);
       if (!alive.current) return;
       if (!switched) throw new WorkbenchError("modelFailed");
-      await mutate({ type: "select-stage", sessionId, index });
+      if (sessionId) await mutate({ type: "select-stage", sessionId, index });
+      else onDraftWorkflowChange?.({ ...workflow, activeStep: index });
     });
   };
   const loadTask = () => perform(async () => {
@@ -62,8 +69,11 @@ export function ModuleWorkflowBar({ sessionId, cwd, busy, models, currentModel, 
   const moduleName = (m: WorkbenchModule) => ["development", "research", "github"].includes(m.id) && ["Development", "Research", "Repository"].includes(m.name) ? t(`workbench.template${m.id[0].toUpperCase()}${m.id.slice(1)}`) : m.name;
   return <div className="lancer-workflow-bar" data-workbench-source>
     <div className="lancer-workbench-toolbar">
-      <button type="button" onClick={onToggleTree} aria-expanded={treeOpen} aria-controls="lancer-task-tree">{t("workbench.tree")}</button>
-      <select aria-label={t("workbench.module")} value={selectedModule && !selectedModule.deleted && !workflow?.disabled ? selectedModule.id : ""} disabled={disabled} onChange={(e) => { const moduleId = e.target.value || null; void perform(() => mutate({ type: "assign", sessionId, moduleId })); }}>
+      {sessionId && <button type="button" onClick={onToggleTree} aria-expanded={treeOpen} aria-controls="lancer-task-tree">{t("workbench.tree")}</button>}
+      <select aria-label={t("workbench.module")} value={selectedModule && !selectedModule.deleted && !workflow?.disabled ? selectedModule.id : ""} disabled={disabled} onChange={(e) => { const moduleId = e.target.value || null; void perform(async () => {
+        if (sessionId) await mutate({ type: "assign", sessionId, moduleId });
+        else if (state) onDraftWorkflowChange?.(assignDraftModule(state, workflow ?? null, moduleId));
+      }); }}>
         <option value="">{t("workbench.normal")}</option>{state?.modules.filter((m) => !m.deleted).map((m) => <option key={m.id} value={m.id}>{moduleName(m)}</option>)}
       </select>
       <button type="button" aria-expanded={manage} onClick={() => setManage(!manage)}>{t("workbench.manage")}</button>
@@ -83,7 +93,7 @@ export function ModuleWorkflowBar({ sessionId, cwd, busy, models, currentModel, 
     {(error || storageError) && <p role="alert">{t(`workbench.${error ?? storageError}`)}</p>}
     {editor && <ModuleWorkflowEditor module={editor.module} template={editor.template} steps={editor.template ? editor.module.steps : workflow?.steps ?? editor.module.steps} models={models} skills={skills} onClose={() => setEditor(null)} onSave={async (saved) => {
       if (editor.template) await mutate({ type: "save-module", module: saved });
-      else await mutate({ type: "save-workflow", sessionId, workflow: { moduleId: saved.id, steps: saved.steps } });
+      else await saveWorkflow({ moduleId: saved.id, steps: saved.steps });
     }} />}
   </div>;
 }

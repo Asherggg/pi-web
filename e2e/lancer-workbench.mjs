@@ -6,7 +6,7 @@ import { createJiti } from "jiti";
 const jiti = createJiti(import.meta.url, { tsconfigPaths: true });
 const { initialWorkbenchState, applyWorkbenchAction } = await jiti.import("../lib/workbench/workflow.ts");
 const base = process.env.LANCER_TEST_BASE ?? "http://127.0.0.1:30141";
-const out = resolve("artifacts/lancer-implementation"); mkdirSync(out, { recursive: true });
+const out = resolve(process.env.LANCER_TEST_ARTIFACTS ?? "artifacts/lancer-implementation"); mkdirSync(out, { recursive: true });
 const id = "lancer-ui-fixture";
 const session = { id, name: "Lancer integration fixture", cwd: "D:/coding/pi-web-c", projectRoot: "D:/coding/pi-web-c", projectKey: "d:/coding/pi-web-c", path: "fixture.jsonl", created: "2026-11-02T00:00:00Z", modified: "2026-11-02T00:00:00Z", messageCount: 2, firstMessage: "Fixture question" };
 let model = { provider: "fixture", modelId: "first" };

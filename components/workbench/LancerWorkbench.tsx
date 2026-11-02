@@ -8,9 +8,12 @@ import { ModuleWorkflowBar } from "./ModuleWorkflowBar";
 import { TaskTreePanel } from "./TaskTreePanel";
 import type { WorkflowModel } from "./ModuleWorkflowEditor";
 import type { ChatInputHandle } from "../ChatInput";
+import type { SessionWorkflow } from "@/lib/workbench/workflow";
 import "./workbench.css";
 interface Props {
-  session: SessionInfo | null; busy: boolean; models: WorkflowModel[];
+  session: SessionInfo | null; newSessionCwd?: string | null; newSessionDraftKey?: string | null;
+  draftWorkflow?: SessionWorkflow | null; onDraftWorkflowChange?: (workflow: SessionWorkflow | null) => void;
+  busy: boolean; models: WorkflowModel[];
   currentModel?: { provider: string; modelId: string } | null;
   onModelChange: (provider: string, modelId: string) => Promise<boolean>;
   composerRef: React.RefObject<ChatInputHandle | null>; children: ReactNode;
@@ -28,7 +31,7 @@ export function LancerWorkbench(props: Props) {
   const { data, loading, error, refresh } = useTaskGraph(id, scope, open && Boolean(id), 0);
   useTaskLights(root, data, open && Boolean(id), id, scope);
   return <div ref={root} className="lancer-workbench">
-    {id && props.session && <ModuleWorkflowBar key={id} sessionId={id} cwd={props.session.cwd} busy={props.busy} models={props.models} currentModel={props.currentModel} onModelChange={props.onModelChange} composerRef={props.composerRef} treeOpen={open} onToggleTree={() => setTreeOpen(!open)} />}
+    {(props.session || props.newSessionCwd) && <ModuleWorkflowBar key={id || props.newSessionDraftKey} sessionId={id || null} draftWorkflow={props.draftWorkflow} onDraftWorkflowChange={props.onDraftWorkflowChange} cwd={props.session?.cwd ?? props.newSessionCwd!} busy={props.busy} models={props.models} currentModel={props.currentModel} onModelChange={props.onModelChange} composerRef={props.composerRef} treeOpen={open} onToggleTree={() => setTreeOpen(!open)} />}
     <div className="lancer-workbench-body"><div className="lancer-conversation">{props.children}</div>
       {open && id && <TaskTreePanel graph={data} loading={loading} error={error} scope={scope} onScope={setScope} onRefresh={refresh} onClose={() => setTreeOpen(false)} onNavigate={props.onNavigate} onFork={props.onFork} onOpenFile={props.onOpenFile} onFullMap={props.onFullMap} />}
     </div>

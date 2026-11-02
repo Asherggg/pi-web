@@ -46,6 +46,7 @@ import { getInitialNavigation, linkedSessionId, withTabOpen } from "@/lib/initia
 import { clearTabOpenSession, getTabOpen, setTabOpenNewSession, setTabOpenSession } from "@/lib/tab-session";
 import { mergeCatalogRow } from "./session-catalog-helpers";
 import { getDraft, parkedNewSessionDraftKey, rekeyDraft } from "@/lib/draft-store";
+import { rekeyWorkflowDraft } from "@/lib/workbench/draft-workflow";
 import {
   contextForCwd,
   type NewSessionContext,
@@ -788,6 +789,7 @@ export function AppShell() {
       const activeDraftKey = activeNewSessionDraftKeyRef.current;
       if (activeDraftKey) {
         rekeyDraft(activeDraftKey, parkedNewSessionDraftKey(cwd));
+        rekeyWorkflowDraft(activeDraftKey, parkedNewSessionDraftKey(cwd));
       }
       activeNewSessionDraftKeyRef.current = null;
       // Selecting the session must remount the chat with the session
@@ -894,6 +896,7 @@ export function AppShell() {
     const activeDraftCwd = newSessionCwd ?? (selectedSession === null ? activeCwd : null);
     if (activeDraftKey && activeDraftCwd) {
       rekeyDraft(activeDraftKey, parkedNewSessionDraftKey(activeDraftCwd));
+      rekeyWorkflowDraft(activeDraftKey, parkedNewSessionDraftKey(activeDraftCwd));
     }
     activeNewSessionDraftKeyRef.current = null;
     // Adopt an explicitly selected session before the sidebar reports its cwd.
@@ -957,8 +960,10 @@ export function AppShell() {
       if (input) input.rekeyDraft(activeDraftKey, draftKey);
       else rekeyDraft(activeDraftKey, draftKey);
       setCarriedNewSessionChoices(newSessionChoicesRef.current);
+      rekeyWorkflowDraft(activeDraftKey, draftKey);
     } else if (activeDraftKey && activeDraftCwd && activeDraftCwd !== cwd) {
       rekeyDraft(activeDraftKey, parkedNewSessionDraftKey(activeDraftCwd));
+      rekeyWorkflowDraft(activeDraftKey, parkedNewSessionDraftKey(activeDraftCwd));
     }
     // Adopt the target project before the sidebar reports its cwd, as an
     // explicit session pick does. Without a key (Ctrl+Alt+N) the current cwd
@@ -970,7 +975,10 @@ export function AppShell() {
     activeProjectKeyRef.current = targetProject;
     // A draft parked in this cwd comes back, unless one was carried here: it
     // stays parked for the next time, never merged into what was carried.
-    if (!getDraft(draftKey)) rekeyDraft(parkedNewSessionDraftKey(cwd), draftKey);
+    if (!getDraft(draftKey)) {
+      rekeyDraft(parkedNewSessionDraftKey(cwd), draftKey);
+      rekeyWorkflowDraft(parkedNewSessionDraftKey(cwd), draftKey);
+    }
     activeNewSessionDraftKeyRef.current = draftKey;
     setNewSessionDraftId(sessionId);
     setSelectedSession(null);

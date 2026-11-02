@@ -24,6 +24,8 @@ import {
   snapshotCoversLoadedEntries,
 } from "@/lib/session-view-cache";
 import { clearDraft, getDraft, parkedNewSessionDraftKey, rekeyDraft, restoreDraftSubmission } from "@/lib/draft-store";
+import { decodeWorkflow, WorkbenchError, type SessionWorkflow } from "@/lib/workbench/workflow";
+import { persistInitialWorkflow, readWorkflowDraft, writeWorkflowDraft } from "@/lib/workbench/draft-workflow";
 import { getPreferredToolPreset, setPreferredToolPreset } from "@/lib/tool-preset-preference";
 import { CONFIGURED_TOOL_PRESET, getPresetFromToolNames, getToolNamesForPreset, type ToolEntry, type ToolPreset } from "@/lib/tool-presets";
 import type { SessionStatsInfo } from "@/lib/pi-types";
@@ -251,6 +253,7 @@ type ConcreteThinkingLevel = Exclude<ThinkingLevelOption, "auto">;
 export interface NewSessionChoices {
   model: { provider: string; modelId: string } | null;
   thinkingLevel: ConcreteThinkingLevel | null;
+  workflow?: SessionWorkflow | null;
 }
 
 function asConcreteThinkingLevel(value?: string | null): ConcreteThinkingLevel | null {
@@ -412,11 +415,27 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const {
     session, newSessionCwd, newSessionDraftKey, onAgentEnd, onToolEnd, onAttentionNeeded, onSessionCreated, onSessionForked,
     modelsRefreshKey, onBranchDataChange, onSystemPromptChange, onSystemToolsChange, onSystemInfoLoaderChange, onSessionStatsPanelOpen,
-    onOpenSettings, onDebugSnapshotReaderChange,
+    onOpenSettings, onDebugSnapshotReaderChange, t,
   } = opts;
 
   const isNew = session === null && newSessionCwd !== null;
   const initialChoices = isNew ? opts.initialNewSessionChoices ?? null : null;
+  const initialWorkflow = useRef(initialChoices?.workflow ?? null);
+  const [newSessionWorkflow, setNewSessionWorkflow] = useState<SessionWorkflow | null>(initialWorkflow.current);
+  const newSessionWorkflowRef = useRef<SessionWorkflow | null>(initialWorkflow.current);
+  useLayoutEffect(() => {
+    if (!isNew || !newSessionDraftKey) return;
+    const saved = initialWorkflow.current ?? readWorkflowDraft(newSessionDraftKey);
+    newSessionWorkflowRef.current = saved;
+    setNewSessionWorkflow(saved);
+  }, [isNew, newSessionDraftKey]);
+  const handleNewWorkflowChange = useCallback((workflow: SessionWorkflow | null) => {
+    if (!isNew) return;
+    const next = workflow ? decodeWorkflow(workflow) : null;
+    newSessionWorkflowRef.current = next;
+    setNewSessionWorkflow(next);
+    if (newSessionDraftKey) writeWorkflowDraft(newSessionDraftKey, next);
+  }, [isNew, newSessionDraftKey]);
 
   const [data, setData] = useState<SessionData | null>(null);
   const [loading, setLoading] = useState(!isNew);
@@ -628,10 +647,24 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     setToolPresetState(getPreferredToolPreset());
   }, [existingSessionId, isNew, setToolPresetState]);
 
+  const restoredWorkflowModelRef = useRef(false);
+  useLayoutEffect(() => {
+    if (!isNew || restoredWorkflowModelRef.current) return;
+    restoredWorkflowModelRef.current = true;
+    const workflow = newSessionWorkflowRef.current;
+    const model = !workflow?.disabled && workflow?.activeStep !== undefined
+      ? workflow.steps[workflow.activeStep]?.model : undefined;
+    if (model && !newSessionModelOverrideRef.current) {
+      newSessionModelOverrideRef.current = model;
+      setNewSessionModel(model);
+      setPendingModel(model);
+    }
+  }, [isNew]);
+
   const onNewSessionChoicesChange = opts.onNewSessionChoicesChange;
   useEffect(() => {
-    if (isNew) onNewSessionChoicesChange?.({ model: newSessionModel, thinkingLevel: newSessionThinkingLevel });
-  }, [isNew, newSessionModel, newSessionThinkingLevel, onNewSessionChoicesChange]);
+    if (isNew) onNewSessionChoicesChange?.({ model: newSessionModel, thinkingLevel: newSessionThinkingLevel, ...(newSessionWorkflow ? { workflow: newSessionWorkflow } : {}) });
+  }, [isNew, newSessionModel, newSessionThinkingLevel, newSessionWorkflow, onNewSessionChoicesChange]);
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
     const container = scrollContainerRef.current;
@@ -1014,6 +1047,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     newSessionPromotedRef.current = true;
     const provisionalDraftKey = newSessionDraftKey;
     if (!provisionalDraftKey) return;
+    writeWorkflowDraft(provisionalDraftKey, null);
     if (provisionalDraftKey !== sid) {
       draftKeyAliasesRef.current.set(provisionalDraftKey, sid);
       const input = opts.chatInputRef?.current;
@@ -2139,6 +2173,11 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
 
         if (!sid) throw new Error("Unable to create a session for the prompt");
         sentSessionId = sid;
+        const workflow = newSessionWorkflowRef.current;
+        if (workflow && !workflow.disabled) {
+          try { await persistInitialWorkflow(sid, workflow); }
+          catch (error) { throw new Error(t?.(`workbench.${error instanceof WorkbenchError ? error.code : "storage"}`) ?? "Workspace configuration could not be saved"); }
+        }
         if (selectedModel) {
           setPendingModel(selectedModel);
           if (existingSid) {
@@ -2227,7 +2266,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       setAgentPhase(null);
       dispatch({ type: "end" });
     }
-  }, [isNew, newSessionCwd, newSessionModel, session, ensureNewSession, ensureEventsConnected, promoteNewSession, waitForPromptSettlement, addNotice, releaseUnconfirmedSend, cancelEventStreamGrace, closeEvents, composerDraftKey, dispatch, reconcileAgentState, restoreSubmission, editEntryId, setEdit]);
+  }, [isNew, newSessionCwd, newSessionModel, session, ensureNewSession, ensureEventsConnected, promoteNewSession, waitForPromptSettlement, addNotice, releaseUnconfirmedSend, cancelEventStreamGrace, closeEvents, composerDraftKey, dispatch, reconcileAgentState, restoreSubmission, editEntryId, setEdit, t]);
 
   const executeBash = useCallback(async (command: string, excludeFromContext: boolean) => {
     if (agentRunningRef.current || bashRunningRef.current) return;
@@ -3296,7 +3335,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     sessionIdRef, scrollContainerRef,
     lastUserMsgRef, pendingScrollToUserRef, initialScrollDoneRef,
     // Actions
-    handleSend, handleAbort, handleFork, handleNavigate, handleModelChange,
+    handleSend, handleAbort, handleFork, handleNavigate, handleModelChange, handleNewWorkflowChange, newSessionWorkflow,
     handleCompact, handleSteer, handleFollowUp, handlePromptWithStreamingBehavior, handleAbortCompaction,
     dismissCompactError,
     handleRecallQueue,

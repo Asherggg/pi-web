@@ -303,7 +303,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     showScrollToBottom,
     sessionIdRef, scrollContainerRef,
     lastUserMsgRef, promptAnchorActive,
-    handleSend, handleAbort, handleFork, handleEditContent, cancelEdit, handleModelChange,
+    handleSend, handleAbort, handleFork, handleEditContent, cancelEdit, handleModelChange, handleNewWorkflowChange, newSessionWorkflow,
     handleCompact, handleSteer, handleFollowUp, handlePromptWithStreamingBehavior, handleAbortCompaction,
     dismissCompactError,
     handleRecallQueue,
@@ -1047,7 +1047,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   }
 
   return (
-    <LancerWorkbench session={session} busy={sessionBusy || isCompacting || modelSwitching} models={modelList} currentModel={displayModelValue} onModelChange={handleModelChange} composerRef={composerRef} onNavigate={onWorkbenchNavigate} onFork={onWorkbenchFork} onOpenFile={onOpenFile} onFullMap={onWorkbenchFullMap}>
+    <LancerWorkbench session={session} newSessionCwd={newSessionCwd} newSessionDraftKey={newSessionDraftKey} draftWorkflow={newSessionWorkflow} onDraftWorkflowChange={handleNewWorkflowChange} busy={sessionBusy || isCompacting || modelSwitching} models={modelList} currentModel={displayModelValue} onModelChange={handleModelChange} composerRef={composerRef} onNavigate={onWorkbenchNavigate} onFork={onWorkbenchFork} onOpenFile={onOpenFile} onFullMap={onWorkbenchFullMap}>
     <div
       className="chat-content relative flex h-full min-w-0 flex-col overflow-hidden"
       style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
