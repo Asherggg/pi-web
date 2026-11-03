@@ -3,6 +3,7 @@
 import { Fragment, memo, useState, useRef, useEffect, useMemo, type CSSProperties } from "react";
 import ReactMarkdown from "react-markdown";
 import { MarkdownBody } from "./MarkdownBody";
+import { RunningBorder } from "./workbench/RunningBorder";
 import { ImagePreview } from "./ImagePreview";
 import { ThinkingIcon } from "./ThinkingIcon";
 import { copyText } from "@/lib/clipboard";
@@ -824,11 +825,13 @@ function AssistantMessageView({
   return (
     <div
       data-message-role="assistant"
+      data-workbench-running-target={isStreaming || undefined}
       data-entry-id={entryId}
       style={{ marginBottom: 16 }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
+      <RunningBorder active={Boolean(isStreaming)} />
       {/* Model label */}
       <div
         style={{

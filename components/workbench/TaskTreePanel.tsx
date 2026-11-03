@@ -7,6 +7,7 @@ import type { TaskGraph, TaskLane, TaskNode, TaskScope } from "@/lib/workbench/g
 import type { ReportAdoptionStatus } from "@/lib/workbench/workflow";
 import type { ReportEvidence } from "@/lib/workbench/report-evidence";
 import { useI18n } from "@/hooks/useI18n";
+import { taskLaneColor } from "@/hooks/task-light-anchors";
 import "@/lib/vendor/lancer-light-ui/running-border.css";
 
 interface ReviewTarget { parentSessionId: string; childSessionId: string; evidence: ReportEvidence; revision: number }
@@ -118,14 +119,15 @@ export function TaskTreePanel({ graph, loading, error, scope, onScope, onRefresh
         const children = new Map<string, number>();
         for (const node of lane.nodes) if (node.parentId) children.set(node.parentId, (children.get(node.parentId) ?? 0) + 1);
         const depths = new Map<string, number>();
-        return <section key={session.id} className="lancer-lane" data-running={state === "running"}>
-          <div className="lancer-lane-heading">{state === "running" && <svg className="light-running-border" style={{ "--light-color": "var(--accent)" } as React.CSSProperties} aria-hidden="true"><rect x="1" y="1" width="calc(100% - 2px)" height="calc(100% - 2px)" rx="5" pathLength="100" /></svg>}<strong title={session.name || session.firstMessage}>{session.name || session.firstMessage || session.id}</strong><small>{t(`workbench.${state}`)}</small>{lane.model && <small title={lane.model}>{lane.model}</small>}{session.parentSessionId && <small title={session.parentSessionId}>{t("workbench.parent")}: {graph.lanes.find((item) => item.session.id === session.parentSessionId)?.session.name || session.parentSessionId.slice(0, 8)}</small>}</div>
+        return <section key={session.id} className="lancer-lane" data-running={state === "running"} style={{ "--lancer-lane-color": taskLaneColor(session.id) } as React.CSSProperties}>
+          <div className="lancer-lane-heading">{state === "running" && <svg className="light-running-border" style={{ "--light-color": taskLaneColor(session.id) } as React.CSSProperties} aria-hidden="true"><rect x="1" y="1" width="calc(100% - 2px)" height="calc(100% - 2px)" rx="5" pathLength="100" /></svg>}<strong title={session.name || session.firstMessage}>{session.name || session.firstMessage || session.id}</strong><small>{t(`workbench.${state}`)}</small>{lane.model && <small title={lane.model} data-workbench-lane-model={session.id}>{lane.model}</small>}{session.parentSessionId && <small title={session.parentSessionId}>{t("workbench.parent")}: {graph.lanes.find((item) => item.session.id === session.parentSessionId)?.session.name || session.parentSessionId.slice(0, 8)}</small>}</div>
           {lane.error && <p role="alert">{t(`workbench.${lane.error}`)} <button onClick={onRefresh}>{t("workbench.retry")}</button></p>}
           {!lane.nodes.length && !lane.error && <p className="lancer-help">{t("workbench.empty")}</p>}
           {lane.nodes.map((node) => {
             const depth = node.parentId && known.has(node.parentId) ? Math.min(4, (depths.get(node.parentId) ?? 0) + ((children.get(node.parentId) ?? 0) > 1 ? 1 : 0)) : 0;
             depths.set(node.id, depth);
             return <div key={node.id} data-task-node={node.id} className={`lancer-tree-node lancer-node-${node.kind}${node.error ? " lancer-node-error" : ""}${node.active ? " lancer-node-active" : ""}`} style={{ marginLeft: depth * 14 }}>
+              <span className="lancer-node-dot" data-task-light-target={node.id} aria-hidden="true" />
               <button type="button" onClick={() => openNode(node, session)} title={node.text}><span className="lancer-node-kind">{t(`workbench.${node.kind}`)}{node.error ? ` · ${t("workbench.failed")}` : ""}</span><span className="lancer-node-text">{node.text}</span></button>
               {node.kind === "report" && node.reviewable && <button className={`lancer-review-button${node.staleReview ? " is-stale" : ""}`} type="button" onClick={() => { void beginReview(node, lane); }}>{t(`workbench.review.${node.staleReview ? "stale" : node.adoption?.status ?? "pending"}`)}</button>}
               {node.kind === "user" && onFork && session.relation?.kind !== "subagent" && <button className="lancer-fork" title={t("workbench.fork")} aria-label={t("workbench.fork")} onClick={() => { void onFork(session, node.entryId).catch((cause: unknown) => setActionError(cause instanceof Error ? cause.message : String(cause))); }}>⑂</button>}

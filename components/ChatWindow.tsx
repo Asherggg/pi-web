@@ -18,6 +18,7 @@ import { MessageView } from "./MessageView";
 import { MarkdownBody } from "./MarkdownBody";
 import { ChatInput, type ChatInputHandle } from "./ChatInput";
 import { LancerWorkbench } from "./workbench/LancerWorkbench";
+import { RunningBorder } from "./workbench/RunningBorder";
 import { ChatMinimap, useMessageRefs } from "./ChatMinimap";
 import { ExtensionStatusBar } from "./ExtensionStatusBar";
 import { AnsiText } from "./AnsiText";
@@ -1047,7 +1048,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   }
 
   return (
-    <LancerWorkbench session={session} newSessionCwd={newSessionCwd} newSessionDraftKey={newSessionDraftKey} draftWorkflow={newSessionWorkflow} onDraftWorkflowChange={handleNewWorkflowChange} busy={sessionBusy || isCompacting || modelSwitching} models={modelList} currentModel={displayModelValue} onModelChange={handleModelChange} composerRef={composerRef} onNavigate={onWorkbenchNavigate} onFork={onWorkbenchFork} onOpenFile={onOpenFile} onFullMap={onWorkbenchFullMap}>
+    <LancerWorkbench session={session} eventVersion={messages.length} newSessionCwd={newSessionCwd} newSessionDraftKey={newSessionDraftKey} draftWorkflow={newSessionWorkflow} onDraftWorkflowChange={handleNewWorkflowChange} busy={sessionBusy || isCompacting || modelSwitching} models={modelList} currentModel={displayModelValue} onModelChange={handleModelChange} composerRef={composerRef} onNavigate={onWorkbenchNavigate} onFork={onWorkbenchFork} onOpenFile={onOpenFile} onFullMap={onWorkbenchFullMap}>
     <div
       className="chat-content relative flex h-full min-w-0 flex-col overflow-hidden"
       style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
@@ -1115,6 +1116,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
         {!isEmptyNew && <>
         <div
           ref={scrollContainerRef}
+          data-workbench-chat-scroll
           // The message list is the one place long output has to be dragged through,
           // so it shows its scrollbar instead of hiding it behind the minimap (#788).
           // A stable gutter keeps the centred column from shifting when a short
@@ -1365,7 +1367,8 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
             )}
 
             {(agentRunning || isCompacting) && !hasStreamingContent && (agentPhase || isCompacting) && (
-              <div className="break-words py-2 text-[13px] text-text-muted">
+              <div className="break-words py-2 text-[13px] text-text-muted" data-workbench-running-target={agentRunning && !isCompacting || undefined}>
+                <RunningBorder active={Boolean(agentRunning && !isCompacting)} />
                 <span className="animate-[pulse_1.5s_infinite]">{phaseLabel(agentPhase, t, isCompacting, (queuedMessages?.steering.length ?? 0) + (queuedMessages?.followUp.length ?? 0))}</span>
               </div>
             )}

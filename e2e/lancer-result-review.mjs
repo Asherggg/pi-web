@@ -99,11 +99,12 @@ try {
   await panel.waitFor();
   assert.equal(await panel.getByRole("button", { name: "Accept result", exact: true }).isDisabled(), true);
   await panel.getByRole("textbox").fill("Keep this review open during graph refresh.");
+  await page.evaluate(() => { window.__heldDispatch = document.querySelector('[data-task-edge="dispatch-edge"]'); });
   const graphGate = responseGate(); nextGraphGate = graphGate;
   try {
     await panel.getByRole("button", { name: "Mark reviewed", exact: true }).click();
     await graphGate.started;
-    await page.locator('[data-task-edge="dispatch-edge"]').waitFor({ state: "detached" });
+    assert.equal(await page.evaluate(() => window.__heldDispatch?.isConnected && window.__heldDispatch === document.querySelector('[data-task-edge="dispatch-edge"]')), true, "refresh must retain existing graph DOM");
     assert.equal(await panel.isVisible(), true, "graph refresh must not close the review");
     assert.equal(await panel.getByRole("textbox").inputValue(), "Keep this review open during graph refresh.");
   } finally { graphGate.release(); }
@@ -149,10 +150,8 @@ try {
   await page.getByRole("button", { name: "File reviewed", exact: true }).waitFor();
   assert.deepEqual(reviewedPaths, ["example.txt"]);
   await page.setViewportSize({ width: 390, height: 844 });
-  if (await page.locator('#session-sidebar.sidebar-open').count()) {
-    await page.locator('.sidebar-overlay-backdrop').click({ position: { x: 380, y: 110 } });
-    await page.waitForFunction(() => document.querySelector('#session-sidebar')?.classList.contains('sidebar-closed'));
-  }
+  // The responsive effect closes the drawer; do not race it with a coordinate click.
+  await page.waitForFunction(() => document.querySelector('#session-sidebar')?.classList.contains('sidebar-closed'));
   await page.waitForFunction(() => document.querySelector('#session-sidebar').getBoundingClientRect().right <= 1);
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   await page.screenshot({ path: resolve(out, "result-review-mobile.png") });

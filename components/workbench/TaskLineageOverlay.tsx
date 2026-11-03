@@ -2,7 +2,8 @@
 import { useLayoutEffect, useState } from "react";
 import type { TaskLineageEdge } from "@/lib/workbench/graph";
 import { useI18n } from "@/hooks/useI18n";
-interface Line { id: string; d: string; kind: string; accepted: boolean }
+import { taskLaneColor } from "@/hooks/task-light-anchors";
+interface Line { id: string; d: string; kind: string; accepted: boolean; color: string }
 export function TaskLineageOverlay({ rootRef, edges }: { rootRef: React.RefObject<HTMLDivElement | null>; edges: TaskLineageEdge[] }) {
   const { t } = useI18n();
   const [drawing, setDrawing] = useState<{ width: number; height: number; lines: Line[] }>({ width: 0, height: 0, lines: [] });
@@ -19,13 +20,13 @@ export function TaskLineageOverlay({ rootRef, edges }: { rootRef: React.RefObjec
         const source = root.querySelector<HTMLElement>(`[data-task-node="${CSS.escape(`${sourceSessionId}:${edge.sourceEntryId}`)}"]`);
         const target = root.querySelector<HTMLElement>(`[data-task-node="${CSS.escape(`${targetSessionId}:${edge.targetEntryId}`)}"]`);
         if (!source || !target) return [];
-        const a = source.getBoundingClientRect(), b = target.getBoundingClientRect();
-        const rightward = a.x < b.x;
-        const x1 = (rightward ? a.right : a.left) - bounds.left;
-        const x2 = (rightward ? b.left : b.right) - bounds.left;
+        const a = (source.querySelector("[data-task-light-target]") ?? source).getBoundingClientRect();
+        const b = (target.querySelector("[data-task-light-target]") ?? target).getBoundingClientRect();
+        const x1 = a.left + a.width / 2 - bounds.left;
+        const x2 = b.left + b.width / 2 - bounds.left;
         const y1 = a.top + a.height / 2 - bounds.top, y2 = b.top + b.height / 2 - bounds.top;
         const middle = (x1 + x2) / 2;
-        return [{ id: edge.id, d: `M ${x1} ${y1} C ${middle} ${y1}, ${middle} ${y2}, ${x2} ${y2}`, kind: edge.kind, accepted: edge.adoption?.status === "accepted" }];
+        return [{ id: edge.id, d: `M ${x1} ${y1} C ${middle} ${y1}, ${middle} ${y2}, ${x2} ${y2}`, kind: edge.kind, accepted: edge.adoption?.status === "accepted", color: taskLaneColor(sourceSessionId) }];
       });
       setDrawing({ width: root.scrollWidth, height: root.scrollHeight, lines });
     };
@@ -37,6 +38,6 @@ export function TaskLineageOverlay({ rootRef, edges }: { rootRef: React.RefObjec
     return () => { observer?.disconnect(); window.removeEventListener("resize", schedule); cancelAnimationFrame(frame); };
   }, [rootRef, edges]);
   return <svg className="lancer-lineage-overlay" width={drawing.width} height={drawing.height} aria-hidden="true" data-task-connections>
-    {drawing.lines.map((line) => <path key={line.id} d={line.d} data-task-edge={line.id} fill="none" stroke="var(--accent)" strokeWidth={line.accepted ? 2 : 1.2} strokeDasharray={line.kind === "return" ? "4 3" : undefined} opacity={line.accepted ? 0.9 : 0.5}><title>{t(line.kind === "dispatch" ? "workbench.dispatch" : "workbench.report")}</title></path>)}
+    {drawing.lines.map((line) => <path key={line.id} d={line.d} data-task-edge={line.id} fill="none" stroke={line.color} strokeWidth={line.accepted ? 2 : 1.2} strokeDasharray={line.kind === "return" ? "4 3" : undefined} opacity={line.accepted ? 0.9 : 0.5}><title>{t(line.kind === "dispatch" ? "workbench.dispatch" : "workbench.report")}</title></path>)}
   </svg>;
 }

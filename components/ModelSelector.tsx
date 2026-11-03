@@ -200,6 +200,7 @@ export function ModelSelector({
         type="button"
         aria-label={ariaLabel}
         aria-haspopup="listbox"
+        data-workbench-model-source
         aria-expanded={open}
         aria-busy={busy || undefined}
         disabled={locked}
