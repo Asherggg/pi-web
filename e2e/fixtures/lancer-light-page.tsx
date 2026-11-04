@@ -13,13 +13,15 @@ import '@/components/workbench/workbench.css';
 const timestamp='2026-11-03T00:00:00Z';
 const session={id:'motion-parent',name:'Primary session',cwd:'D:/coding/pi-web-c',created:timestamp,modified:timestamp} as SessionInfo;
 const child={...session,id:'motion-child',name:'Child session',relation:{kind:'subagent',parentSessionId:session.id,status:'completed'}} as SessionInfo;
+const projectSession={...session,id:'motion-project',name:'Project session'} as SessionInfo;
 const node=(id:string,entryId:string,kind:TaskNode['kind'],sessionId=session.id):TaskNode=>({id,entryId,sessionId,parentId:null,kind,text:'Verified fixture event '+entryId,timestamp});
-const initial:TaskGraph={sessionId:session.id,running:[],truncated:false,edges:[],lanes:[{session,model:'fixture/primary',truncated:false,nodes:[node('motion-parent:initial','initial','answer')]},{session:child,model:'fixture/worker',truncated:false,nodes:[node('motion-child:initial','initial','answer',child.id)]}]};
+const initial:TaskGraph={sessionId:session.id,running:[],truncated:false,edges:[],lanes:[{session,model:'fixture/primary',truncated:false,nodes:[node('motion-parent:initial','initial','answer')]},{session:child,model:'fixture/worker',truncated:false,nodes:[node('motion-child:initial','initial','answer',child.id)]},{session:projectSession,model:'fixture/peer',truncated:false,nodes:[node('motion-project:initial','initial','answer',projectSession.id)]}]};
 function Fixture(){
  const root=useRef<HTMLDivElement>(null);
- const [graph,setGraph]=useState(initial),[open,setOpen]=useState(true),[streaming,setStreaming]=useState(false);
+ const [graph,setGraph]=useState(initial),[open,setOpen]=useState(true),[streaming,setStreaming]=useState(false),[scope,setScope]=useState<'current'|'family'|'project'>('family');
  const [messages,setMessages]=useState(['initial']);const serial=useRef(0);
- useTaskLights(root,graph,open,session.id,'family');
+ const scopedGraph={...graph,lanes:scope==='current'?graph.lanes.filter(lane=>lane.session.id===session.id):scope==='family'?graph.lanes.filter(lane=>lane.session.id===session.id||lane.session.relation?.kind==='subagent'&&lane.session.relation.parentSessionId===session.id):graph.lanes};
+ useTaskLights(root,scopedGraph,open,session.id,scope);
  const add=()=>{const entryId='arrival-'+(++serial.current);setMessages(old=>[...old,entryId]);setGraph(old=>({...old,lanes:old.lanes.map((lane,i)=>i?lane:{...lane,nodes:[...lane.nodes,node(session.id+':'+entryId,entryId,'answer')]})}));};
  const message=(id:string)=>({role:'assistant',content:[{type:'text',text:'Fixture response '+id}],provider:'fixture',model:'primary',timestamp:Date.parse(timestamp),stopReason:'stop'}) as AssistantMessage;
  return <div ref={root} className="lancer-workbench" style={{height:'100vh','--lancer-current-lane-color':taskLaneColor(session.id)} as CSSProperties}>
@@ -27,7 +29,7 @@ function Fixture(){
   <div className="lancer-workbench-body"><div className="lancer-conversation" style={{display:'flex',flexDirection:'column',padding:20}}>
    <ModelSelector options={[{provider:'fixture',modelId:'primary',name:'Current model'}]} value={{provider:'fixture',modelId:'primary'}} onChange={()=>{}} ariaLabel="Current model" />
    <div data-workbench-chat-scroll style={{overflow:'auto',flex:1,marginTop:20}}>{messages.map((id,i)=><MessageView key={id} entryId={id} message={message(id)} isStreaming={streaming && i===messages.length-1} />)}</div>
-  </div>{open&&<TaskTreePanel graph={graph} loading={false} error={null} scope="family" onScope={()=>{}} onRefresh={()=>{}} onClose={()=>setOpen(false)} />}</div>
+  </div>{open&&<TaskTreePanel graph={scopedGraph} loading={false} error={null} scope={scope} onScope={setScope} onRefresh={()=>{}} onClose={()=>setOpen(false)} />}</div>
  </div>;
 }
 function RemoteFixture(){
