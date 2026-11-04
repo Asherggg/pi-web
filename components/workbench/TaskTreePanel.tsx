@@ -74,7 +74,7 @@ export function TaskTreePanel({ graph, loading, error, scope, onScope, onRefresh
     const node = lane?.nodes.find((item) => item.entryId === entryId);
     if (lane && node) openNode(node, lane.session);
   };
-  return <aside id="lancer-task-tree" className="lancer-tree" aria-label={t("workbench.title")}>
+  return <aside id="lancer-task-tree" className={`lancer-tree lancer-tree-scope-${scope}`} aria-label={t("workbench.title")}>
     <header><strong>{t("workbench.tree")}</strong><span><button type="button" onClick={onRefresh} aria-label={t("workbench.refresh")}>↻</button><button type="button" onClick={onClose} aria-label={t("workbench.close")}>×</button></span></header>
     <div className="lancer-tree-controls"><select aria-label={t("workbench.tree")} value={scope} onChange={(event) => onScope(event.target.value as TaskScope)}>{(["current", "family", "project"] as const).map((value) => <option value={value} key={value}>{t(`workbench.${value}`)}</option>)}</select>{onFullMap && <button type="button" onClick={onFullMap}>{t("workbench.fullMap")}</button>}</div>
     {actionError && <p role="alert">{actionError}</p>}
