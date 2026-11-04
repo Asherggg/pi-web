@@ -60,7 +60,7 @@
 .lancer-skill-options > span { display: block; margin-top: 10px; }
 .lancer-skill-options label { display: flex; flex-direction: row; align-items: center; margin: 5px 0; gap: 7px; overflow-wrap: anywhere; }
 .lancer-editor footer { justify-content: flex-end; margin-top: 16px; }
-@media (max-width: 760px) { .lancer-tree { position: absolute; inset: 0 0 0 auto; z-index: 8; width: min(420px, 92%); box-shadow: -6px 0 25px rgba(0, 0, 0, .15); } .lancer-workbench-toolbar button, .lancer-tree button { min-height: 32px; } .lancer-workflow-bar { padding: 5px 8px; } }
+@media (max-width: 960px) { .lancer-tree { position: absolute; inset: 0 0 0 auto; z-index: 8; width: min(420px, 92%); box-shadow: -6px 0 25px rgba(0, 0, 0, .15); } .lancer-workbench-toolbar button, .lancer-tree button { min-height: 32px; } .lancer-workflow-bar { padding: 5px 8px; } }
 .lancer-lineage h3, .lancer-review-panel h3 { font-size: 12px; margin: 5px 0 8px; }
 .lancer-lineage { margin: 5px 0 14px; padding: 8px; border: 1px solid var(--border); border-radius: 6px; }
 .lancer-lineage-edge { display: flex; align-items: center; gap: 5px; padding: 3px 0; }
