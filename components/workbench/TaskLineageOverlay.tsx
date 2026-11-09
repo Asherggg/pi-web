@@ -3,6 +3,7 @@ import { useLayoutEffect, useRef, useState } from "react";
 import type { TaskLane, TaskLineageEdge } from "@/lib/workbench/graph";
 import { useI18n } from "@/hooks/useI18n";
 import { taskLaneColor } from "@/hooks/task-light-anchors";
+import { nonLinearTreeLinks } from "@/lib/workbench/tree-links";
 interface Line { id: string; d: string; kind: "tree" | "dispatch" | "return"; accepted: boolean; color: string; from?: string; to?: string }
 function point(element: HTMLElement, bounds: DOMRect): { x: number; y: number } {
   const rect = element.getBoundingClientRect();
@@ -15,9 +16,7 @@ function anchor(root: HTMLElement, id: string): HTMLElement | null {
 export function TaskLineageOverlay({ rootRef, lanes = [], edges = [] }: { rootRef: React.RefObject<HTMLDivElement | null>; lanes?: TaskLane[]; edges?: TaskLineageEdge[] }) {
   const { t } = useI18n();
   const [drawing, setDrawing] = useState<{ width: number; height: number; lines: Line[] }>({ width: 0, height: 0, lines: [] });
-  // A parent may hand us a fresh lanes array every render. Writing an equal-but-new
-  // drawing object back would re-run this effect forever and no frame would survive
-  // long enough to be measured, so only committed changes reach state.
+  // ResizeObserver may schedule unchanged layouts; keep equal measurements out of state.
   const drawn = useRef("");
   useLayoutEffect(() => {
     let frame = 0, observer: ResizeObserver | null = null;
@@ -29,28 +28,22 @@ export function TaskLineageOverlay({ rootRef, lanes = [], edges = [] }: { rootRe
       if (!root) return;
       if (!observer && typeof ResizeObserver !== "undefined") { observer = new ResizeObserver(() => schedule()); observer.observe(root); }
       const bounds = root.getBoundingClientRect();
-      const treeLines = lanes.flatMap((lane) => {
-        const byId = new Map(lane.nodes.map((node) => [node.id, node]));
-        return lane.nodes.flatMap((node, index): Line[] => {
-          // The lane's vertical rail already represents the ordinary previous
-          // entry link. Draw only non-linear parents, such as branch joins.
-          if (!node.parentId || node.parentId === lane.nodes[index - 1]?.id || !byId.has(node.parentId)) return [];
-          const source = anchor(root, node.parentId);
-          const target = anchor(root, node.id);
-          if (!source || !target) return [];
-          const a = point(source, bounds), b = point(target, bounds);
-          const bend = Math.max(18, Math.abs(b.y - a.y) * 0.35);
-          return [{
-            id: `tree:${lane.session.id}:${node.parentId}:${node.id}`,
-            d: `M ${a.x} ${a.y} C ${a.x} ${a.y + bend}, ${b.x} ${b.y - bend}, ${b.x} ${b.y}`,
-            kind: "tree",
-            accepted: false,
-            color: taskLaneColor(lane.session.id),
-            from: node.parentId,
-            to: node.id,
-          }];
-        });
-      }).slice(0, 240);
+      const treeLines = nonLinearTreeLinks(lanes).flatMap((link): Line[] => {
+        const source = anchor(root, link.parentId);
+        const target = anchor(root, link.nodeId);
+        if (!source || !target) return [];
+        const a = point(source, bounds), b = point(target, bounds);
+        const bend = Math.max(18, Math.abs(b.y - a.y) * 0.35);
+        return [{
+          id: `tree:${link.laneSessionId}:${link.parentId}:${link.nodeId}`,
+          d: `M ${a.x} ${a.y} C ${a.x} ${a.y + bend}, ${b.x} ${b.y - bend}, ${b.x} ${b.y}`,
+          kind: "tree",
+          accepted: false,
+          color: taskLaneColor(link.laneSessionId),
+          from: link.parentId,
+          to: link.nodeId,
+        }];
+      });
       const relationLines = edges.slice(0, 160).flatMap((edge): Line[] => {
         const sourceSessionId = edge.kind === "dispatch" ? edge.parentSessionId : edge.childSessionId;
         const targetSessionId = edge.kind === "dispatch" ? edge.childSessionId : edge.parentSessionId;
