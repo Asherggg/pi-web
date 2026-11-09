@@ -12,6 +12,7 @@ import type { ChatInputHandle } from "../ChatInput";
 import type { SessionWorkflow } from "@/lib/workbench/workflow";
 import "./workbench.css";
 interface Props {
+  enabled?: boolean;
   session: SessionInfo | null; newSessionCwd?: string | null; newSessionDraftKey?: string | null;
   draftWorkflow?: SessionWorkflow | null; onDraftWorkflowChange?: (workflow: SessionWorkflow | null) => void;
   busy: boolean; eventVersion?: number; models: WorkflowModel[];
@@ -23,6 +24,10 @@ interface Props {
   onOpenFile?: (filePath: string) => void; onFullMap?: () => void;
 }
 export function LancerWorkbench(props: Props) {
+  if (props.enabled === false) return <>{props.children}</>;
+  return <ActiveLancerWorkbench {...props} />;
+}
+function ActiveLancerWorkbench(props: Props) {
   const [open, setOpen] = useState(false);
   const [scope, setScope] = useState<TaskScope>("family");
   const root = useRef<HTMLDivElement>(null);

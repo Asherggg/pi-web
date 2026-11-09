@@ -1,9 +1,11 @@
 // UI-only Next host for actual Pi Web components. API/provider requests belong to fixtures.
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
+const appVersion=JSON.parse(readFileSync(join(root,'package.json'),'utf8')).version;
+const piVersion=JSON.parse(readFileSync(join(root,'node_modules/@earendil-works/pi-coding-agent/package.json'),'utf8')).version;
 const host=resolve(process.env.LANCER_PREVIEW_DIR??join(root,'artifacts/lancer-light-fidelity/preview'));
 const port=Number(process.env.LANCER_PREVIEW_PORT??30143);
 if(!Number.isSafeInteger(port)||port<1024||port>65535||port===30141)throw new Error('Choose an isolated preview port, not the production port.');
@@ -23,7 +25,7 @@ import '@/app/sidebar-menu.css';
 export default function Layout({children}:{children:ReactNode}){return <html lang="en" suppressHydrationWarning><body><script dangerouslySetInnerHTML={{__html:THEME_INIT_SCRIPT}} />{children}</body></html>;}`);
 save('tsconfig.json',JSON.stringify({compilerOptions:{target:'ES2020',lib:['dom','dom.iterable','esnext'],skipLibCheck:true,strict:true,noEmit:true,esModuleInterop:true,module:'esnext',moduleResolution:'bundler',jsx:'react-jsx',resolveJsonModule:true,isolatedModules:true,plugins:[{name:'next'}],baseUrl:'.',paths:{'@/*':[join(relative(host,root).replaceAll(String.fromCharCode(92),'/'),'/*')]}},include:['**/*.ts','**/*.tsx','.next/types/**/*.ts','.next/dev/types/**/*.ts'],exclude:['node_modules']},null,2));
 save('postcss.config.mjs',`export default {plugins:{'@tailwindcss/postcss':{}}};`);
-const config={devIndicators:false,outputFileTracingRoot:root,images:{unoptimized:true},turbopack:{root,rules:{'**/mdast-util-gfm-autolink-literal/lib/index.js':{loaders:[join(root,'lib/gfm-autolink-email-loader.cjs')]}}},transpilePackages:['mermaid','@mermaid-js/parser'],serverExternalPackages:['node-pty','undici','web-push','@earendil-works/pi-coding-agent','@earendil-works/pi-agent-core','@earendil-works/pi-ai','@earendil-works/pi-tui'],env:{NEXT_PUBLIC_APP_VERSION:'0.13.0',NEXT_PUBLIC_PI_VERSION:'1.4.0'}};
+const config={devIndicators:false,outputFileTracingRoot:root,images:{unoptimized:true},turbopack:{root,rules:{'**/mdast-util-gfm-autolink-literal/lib/index.js':{loaders:[join(root,'lib/gfm-autolink-email-loader.cjs')]}}},transpilePackages:['mermaid','@mermaid-js/parser'],serverExternalPackages:['node-pty','undici','web-push','@earendil-works/pi-coding-agent','@earendil-works/pi-agent-core','@earendil-works/pi-ai','@earendil-works/pi-tui'],env:{NEXT_PUBLIC_APP_VERSION:appVersion,NEXT_PUBLIC_PI_VERSION:piVersion}};
 save('next.config.mjs','export default '+JSON.stringify(config,null,2)+';');
 const url='http://127.0.0.1:'+port;
 let exists=false;

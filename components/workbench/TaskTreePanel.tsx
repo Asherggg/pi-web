@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { TaskLineageOverlay } from "./TaskLineageOverlay";
 import { TurnSnapshotPanel } from "./TurnSnapshotPanel";
 import type { SessionInfo } from "@/lib/types";
+import { isHiddenRelation } from "@/lib/session-family";
 import type { TaskGraph, TaskLane, TaskNode, TaskScope } from "@/lib/workbench/graph";
 import type { ReportAdoptionStatus } from "@/lib/workbench/workflow";
 import type { ReportEvidence } from "@/lib/workbench/report-evidence";
@@ -130,7 +131,7 @@ export function TaskTreePanel({ graph, loading, error, scope, onScope, onRefresh
               <span className={`lancer-node-dot lancer-node-dot-${node.kind}`} data-task-light-target={node.id} aria-hidden="true" />
               <button type="button" onClick={() => openNode(node, session)} title={node.text}><span className="lancer-node-kind">{t(`workbench.${node.kind}`)}{node.error ? ` · ${t("workbench.failed")}` : ""}</span><span className="lancer-node-text">{node.text}</span></button>
               {node.kind === "report" && node.reviewable && <button className={`lancer-review-button${node.staleReview ? " is-stale" : ""}`} type="button" onClick={() => { void beginReview(node, lane); }}>{t(`workbench.review.${node.staleReview ? "stale" : node.adoption?.status ?? "pending"}`)}</button>}
-              {node.kind === "user" && onFork && session.relation?.kind !== "subagent" && <button className="lancer-fork" title={t("workbench.fork")} aria-label={t("workbench.fork")} onClick={() => { void onFork(session, node.entryId).catch((cause: unknown) => setActionError(cause instanceof Error ? cause.message : String(cause))); }}>⑂</button>}
+              {node.kind === "user" && onFork && !isHiddenRelation(session.relation) && <button className="lancer-fork" title={t("workbench.fork")} aria-label={t("workbench.fork")} onClick={() => { void onFork(session, node.entryId).catch((cause: unknown) => setActionError(cause instanceof Error ? cause.message : String(cause))); }}>⑂</button>}
             </div>;
           })}
         </section>;

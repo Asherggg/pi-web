@@ -1,6 +1,7 @@
 import type { AgentMessage, AssistantMessage, SessionEntry, SessionInfo, ToolResultMessage } from "../types";
 import type { ReportAdoption } from "./workflow";
 import { normalizeToolCalls } from "../normalize";
+import { isHiddenRelation } from "../session-family";
 import { extractTurnWrittenFiles } from "../turn-written-files";
 export type TaskScope = "current" | "family" | "project";
 export interface TaskNode {
@@ -41,13 +42,13 @@ export function familySessionIds(sessions: SessionInfo[], activeId: string): Set
   while (!seen.has(root)) {
     seen.add(root);
     const relation = byId.get(root)?.relation;
-    if (relation?.kind !== "subagent") break;
+    if (!isHiddenRelation(relation)) break;
     root = relation.parentSessionId;
   }
   const family = new Set([root]);
   for (let changed = true; changed;) {
     changed = false;
-    for (const s of sessions) if (s.relation?.kind === "subagent" && family.has(s.relation.parentSessionId) && !family.has(s.id)) { family.add(s.id); changed = true; }
+    for (const s of sessions) if (isHiddenRelation(s.relation) && family.has(s.relation.parentSessionId) && !family.has(s.id)) { family.add(s.id); changed = true; }
   }
   return family;
 }
