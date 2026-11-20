@@ -3,11 +3,16 @@ import type { ReportAdoption } from "./workflow";
 import { normalizeToolCalls } from "../normalize";
 import { isHiddenRelation } from "../session-family";
 import { extractTurnWrittenFiles } from "../turn-written-files";
+import { taskToolOperation, type TaskToolOperation } from "./task-tool-summary";
 export type TaskScope = "current" | "family" | "project";
 export interface TaskNode {
   id: string; sessionId: string; entryId: string; parentId: string | null;
   kind: "user" | "answer" | "tools" | "model" | "summary" | "file" | "report" | "result";
   active?: boolean;
+  /** Native user/report ancestor, retained even when the node window cuts its prompt off. */
+  turnId?: string;
+  operations?: TaskToolOperation[];
+  toolPhase?: "call" | "result";
   text: string; timestamp: string; error?: boolean; filePath?: string;
   reportEntryId?: string; resultEntryId?: string; toolCallIds?: string[]; childSessionId?: string; completedAt?: string;
   reviewable?: boolean; reviewError?: string; adoption?: ReportAdoption; staleReview?: boolean;
@@ -61,12 +66,30 @@ function contentText(message: { content?: unknown }): string {
 export function buildTaskLane(session: SessionInfo, entries: SessionEntry[], maxNodes = 300): TaskLane {
   const nodes: TaskNode[] = [];
   const visible = new Map<string, string | null>();
-  const calls = new Map<string, { message: AssistantMessage; entryId: string }>();
+  const calls = new Map<string, Map<string, { message: AssistantMessage; entryId: string; operation: TaskToolOperation }>>();
+  const parents = new Map(entries.map((entry) => [entry.id, entry.parentId]));
+  const findCall = (parentId: string | null, toolCallId: string) => {
+    const visited = new Set<string>();
+    let cursor = parentId;
+    while (cursor && !visited.has(cursor)) {
+      visited.add(cursor);
+      const call = calls.get(cursor)?.get(toolCallId);
+      if (call) return call;
+      cursor = parents.get(cursor) ?? null;
+    }
+    return undefined;
+  };
+  const turns = new Map<string, string>();
   let model: string | undefined;
   for (const entry of entries) {
+    const isTurn = entry.type === "message" && entry.message.role === "user"
+      || entry.type === "custom_message" && entry.customType === "pi-web:subagent-notification" && entry.display !== false
+      || entry.type === "compaction" || entry.type === "branch_summary";
+    const turnId = isTurn ? `${session.id}:${entry.id}` : (entry.parentId ? turns.get(entry.parentId) : undefined) ?? `${session.id}:context`;
+    turns.set(entry.id, turnId);
     const parentId = entry.parentId ? visible.get(entry.parentId) ?? null : null;
     let node: TaskNode | undefined;
-    const base = { id: `${session.id}:${entry.id}`, sessionId: session.id, entryId: entry.id, parentId, timestamp: entry.timestamp };
+    const base = { id: `${session.id}:${entry.id}`, sessionId: session.id, entryId: entry.id, parentId, turnId, timestamp: entry.timestamp };
     if (entry.type === "model_change") {
       model = `${entry.provider}/${entry.modelId}`;
       node = { ...base, kind: "model", text: model };
@@ -84,14 +107,18 @@ export function buildTaskLane(session: SessionInfo, entries: SessionEntry[], max
       else if (message.role === "assistant") {
         const assistant = message as AssistantMessage;
         const tools = Array.isArray(assistant.content) ? assistant.content.filter((b) => b.type === "toolCall") : [];
-        for (const tool of tools) calls.set(tool.toolCallId, { message: assistant, entryId: entry.id });
+        const operations = tools.map((tool) => taskToolOperation(tool, base.id));
+        if (tools.length) calls.set(entry.id, new Map(tools.map((tool, index) => [tool.toolCallId, { message: assistant, entryId: entry.id, operation: operations[index] }])));
         const text = contentText(assistant);
-        if (text || tools.length || assistant.errorMessage) node = { ...base, kind: tools.length ? "tools" : "answer", text: text || tools.map((t) => t.toolName).join(" · ") || assistant.errorMessage || "", error: assistant.stopReason === "error" || assistant.stopReason === "aborted", ...(tools.length ? { toolCallIds: tools.map((tool) => tool.toolCallId) } : {}) };
+        if (text || tools.length || assistant.errorMessage) node = { ...base, kind: tools.length ? "tools" : "answer", text: tools.length ? operations.map((operation) => `${operation.name} ${operation.target}`.trim()).join(" · ").slice(0, 180) : text || assistant.errorMessage || "", error: assistant.stopReason === "error" || assistant.stopReason === "aborted", ...(tools.length ? { toolCallIds: tools.map((tool) => tool.toolCallId), operations, toolPhase: "call" as const } : {}) };
       } else if (message.role === "toolResult") {
         const result = message as ToolResultMessage;
-        const call = calls.get(result.toolCallId);
+        const call = findCall(entry.parentId, result.toolCallId);
         const details = result.details && typeof result.details === "object" && !Array.isArray(result.details) ? result.details as Record<string, unknown> : {};
-        node = { ...base, kind: details.kind === "pi-web-subagent" && typeof details.completedAt === "string" && ["completed", "failed", "aborted"].includes(String(details.status)) ? "report" : "tools", text: `${result.toolName}: ${contentText(result)}`, error: result.isError,
+        const report = details.kind === "pi-web-subagent" && typeof details.completedAt === "string" && ["completed", "failed", "aborted"].includes(String(details.status));
+        const operation = call?.operation ?? taskToolOperation({ type: "toolCall", toolCallId: result.toolCallId, toolName: result.toolName ?? "tool", input: {} }, base.id);
+        node = { ...base, kind: report ? "report" : "tools", text: report ? `${result.toolName}: ${contentText(result)}` : `${operation.name} ${operation.target}`.trim(), error: result.isError,
+          operations: [operation], toolPhase: "result" as const,
           ...(details.kind === "pi-web-subagent" && typeof details.sessionId === "string" ? { childSessionId: details.sessionId, reportEntryId: entry.id, completedAt: typeof details.completedAt === "string" ? details.completedAt : undefined, resultEntryId: typeof details.resultEntryId === "string" ? details.resultEntryId : undefined } : {}) };
         nodes.push(node);
         visible.set(entry.id, node.id);

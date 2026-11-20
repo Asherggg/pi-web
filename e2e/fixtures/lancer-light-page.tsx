@@ -35,16 +35,16 @@ function Fixture(){
 }
 function RemoteFixture(){
  const root=useRef<HTMLDivElement>(null);
- const [open,setOpen]=useState(true),[version,setVersion]=useState(0),[canonical,setCanonical]=useState(false),[clipped,setClipped]=useState(false);
+ const [open,setOpen]=useState(true),[version,setVersion]=useState(0),[canonical,setCanonical]=useState(false),[clipped,setClipped]=useState(false),[selected,setSelected]=useState('');
  const {data,loading,error,refresh}=useTaskGraph('remote-motion-parent','family',open,version);
  useTaskLights(root,data,open,'remote-motion-parent','family');
  const message={role:'assistant',content:[{type:'text',text:'Live response awaiting its canonical entry identity'}],provider:'fixture',model:'primary',timestamp:Date.parse(timestamp),stopReason:'stop'} as AssistantMessage;
  return <div ref={root} className="lancer-workbench" style={{height:'100vh','--lancer-current-lane-color':taskLaneColor('remote-motion-parent')} as CSSProperties}>
-  <header style={{padding:12,display:'flex',gap:12}}><strong>Remote graph acceptance fixture</strong><button onClick={()=>setVersion(n=>n+1)}>Refresh graph</button><button onClick={()=>setCanonical(true)}>Attach canonical ID</button><button onClick={()=>setClipped(!clipped)}>Toggle clip</button><button onClick={()=>setOpen(!open)}>Toggle tree</button></header>
+  <header style={{padding:12,display:'flex',gap:12,flexWrap:'wrap'}}><strong>Remote graph acceptance fixture</strong><output data-fixture-selected>{selected}</output><button onClick={()=>setVersion(n=>n+1)}>Refresh graph</button><button onClick={()=>setCanonical(true)}>Attach canonical ID</button><button onClick={()=>setClipped(!clipped)}>Toggle clip</button><button onClick={()=>setOpen(!open)}>Toggle tree</button></header>
   <div className="lancer-workbench-body"><div className="lancer-conversation" style={{padding:20,overflow:'auto'}} data-workbench-chat-scroll>
    <ModelSelector options={[{provider:'fixture',modelId:'primary',name:'Current model'}]} value={{provider:'fixture',modelId:'primary'}} onChange={()=>{}} ariaLabel="Current model" />
    <div data-fixture-clip style={{overflow:'hidden',height:clipped?0:160,marginTop:20}}><MessageView message={message} entryId={canonical?'late-entry':undefined} /></div>
-  </div>{open&&<TaskTreePanel graph={data} loading={loading} error={error} scope="family" onScope={()=>{}} onRefresh={refresh} onClose={()=>setOpen(false)} />}</div>
+  </div>{open&&<TaskTreePanel graph={data} loading={loading} error={error} scope="family" onScope={()=>{}} onRefresh={refresh} onClose={()=>setOpen(false)} onNavigate={async(target,entryId)=>{setSelected(target.id+':'+entryId);}} />}</div>
  </div>;
 }
 export function GraphMotionFixture(){return <I18nProvider><RemoteFixture /></I18nProvider>;}

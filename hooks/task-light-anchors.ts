@@ -8,10 +8,18 @@ export function taskLaneColor(id: string): string {
   return LANE_COLORS[hash % LANE_COLORS.length];
 }
 
+/** Resolve only an exact native ID or its explicit folded/merged display owner. */
+export function taskTargetSelector(root: HTMLElement, nodeId: string): string {
+  const exact = `[data-task-light-target="${CSS.escape(nodeId)}"]`;
+  if (root.querySelector(exact)) return exact;
+  const mapped = root.querySelector<HTMLElement>(`[data-task-anchor-for="${CSS.escape(nodeId)}"]`)?.dataset.taskAnchorId;
+  return mapped ? `[data-task-light-target="${CSS.escape(mapped)}"]` : exact;
+}
+
 /** Follow only the work tree, never the chat or the document. */
 export function revealTaskTarget(target: HTMLElement): void {
   const scroll = target.closest<HTMLElement>(".lancer-tree-scroll");
-  if (!scroll) return;
+  if (!scroll || scroll.dataset?.taskFollow === "false") return;
   const node = target.closest<HTMLElement>(".lancer-tree-node") ?? target;
   const rect = node.getBoundingClientRect();
   const clip = scroll.getBoundingClientRect();

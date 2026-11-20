@@ -24,12 +24,13 @@
 .lancer-tree-scroll { flex: 1; min-height: 0; overflow: auto; padding: 10px 14px 16px; }
 .lancer-lanes { position: relative; display: flex; gap: 16px; align-items: flex-start; min-width: 100%; }
 .lancer-lineage-overlay { position: absolute; top: 0; left: 0; pointer-events: none; overflow: hidden; }
-.lancer-lane { width: 260px; min-width: 260px; flex: 1 0 260px; }
+.lancer-lane { width: 260px; min-width: 260px; flex: 1 0 260px; overflow: clip; padding-left: 5px; }
 .lancer-lane-heading { position: relative; padding: 10px 0; margin-bottom: 8px; border-bottom: 1px solid var(--border); }
 .lancer-lane-heading strong, .lancer-lane-heading small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lancer-lane-heading strong { font-size: 12.5px; font-weight: 600; }
 .lancer-lane-heading small { color: var(--text-dim); font-size: 10.5px; margin-top: 5px; }
 .lancer-lane-model-source { display: flex; align-items: center; gap: 5px; min-width: 0; margin-top: 5px; overflow: hidden; color: var(--text-dim); font-size: 10.5px; font-family: var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
+.lancer-lane-model-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lancer-model-glyph { width: 8px; height: 8px; flex: none; border: 1px solid var(--lancer-lane-color, #3B82F6); border-radius: 2px; transform: rotate(45deg); }
 .lancer-lane[data-running=true] .lancer-lane-heading { border-bottom-color: var(--lancer-lane-color); }
 .lancer-tree-node { position: relative; z-index: 1; display: flex; gap: 5px; border-left: 1px solid var(--border); padding: 4px 0 4px 12px; min-width: 0; }
@@ -42,11 +43,30 @@
 .lancer-node-dot-summary { background: transparent; border: 1.5px solid var(--lancer-lane-color, #3B82F6); }
 .lancer-node-dot-tools { width: 5px; height: 5px; left: -3px; top: 20px; }
 
-.lancer-tree-node > button:first-of-type { flex: 1; width: 0; min-width: 0; min-height: 40px; padding: 6px 8px 6px 4px; border-color: transparent; border-radius: 6px; text-align: left; background: transparent; }
+.lancer-tree-summary { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 7px 14px; font-size: 10.5px; color: var(--text-dim); border-bottom: 1px solid var(--border); }
+.lancer-tree-summary button { flex: none; font-size: 10.5px; }
+.lancer-task-turn { margin-bottom: 8px; min-width: 0; border-left: 1px solid var(--border); }
+.lancer-turn-heading { position: relative; display: flex; align-items: center; min-width: 0; padding-left: 8px; gap: 2px; }
+.lancer-turn-heading > button:first-of-type { display: flex; align-items: center; gap: 5px; flex: 1; min-width: 0; min-height: 36px; border: 0; padding: 5px 4px; text-align: left; background: transparent; }
+.lancer-turn-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; font-weight: 500; }
+.lancer-turn-heading small { font-size: 10px; flex: none; color: var(--text-dim); }
+.lancer-turn-chevron { flex: none; color: var(--text-dim); }
+.lancer-turn-heading .lancer-turn-locate, .lancer-turn-heading .lancer-fork { flex: none; border: 0; padding: 4px; background: transparent; font-size: 11px; }
+.lancer-turn-counts { margin: 0; padding: 0 8px 5px 24px; color: var(--text-dim); font-size: 10px; }
+.lancer-process-toggle, .lancer-earlier-turns { display: block; width: 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10.5px !important; text-align: left; margin: 4px 0; }
+.lancer-turn-body { padding-left: 8px; min-width: 0; }
+.lancer-task-turn.is-running > .lancer-turn-heading { background: var(--bg-hover); }
+.lancer-turn-heading .lancer-turn-issues { color: var(--accent); }
+.lancer-node-status { width: 10px; flex: none; font-size: 10px; color: var(--text-dim); }
+.lancer-tree-node > button:first-of-type { display: flex; align-items: center; gap: 5px; flex: 1; width: 0; min-width: 0; min-height: 32px; padding: 4px; border-color: transparent; border-radius: 5px; text-align: left; background: transparent; }
 .lancer-tree-node > button:first-of-type:hover { background: var(--bg-hover); }
-.lancer-node-kind { display: block; color: var(--text-dim); font-size: 10px; }
-.lancer-node-text { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; font-size: 12px; line-height: 1.5; margin-top: 4px; }
-.lancer-node-active > button:first-of-type { border-left: 2px solid var(--lancer-lane-color, #3B82F6); }
+.lancer-node-kind { flex: none; color: var(--text-dim); font-size: 10px; }
+.lancer-node-text { display: block; min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; line-height: 1.5; }
+.lancer-tree-node > button small { flex: none; font-size: 10px; color: var(--text-dim); }
+.lancer-node-executing > button:first-of-type { border-left: 2px solid var(--lancer-lane-color, #3B82F6); }
+.lancer-tree-node { padding: 1px 0 1px 8px; border-left: 0; }
+.lancer-tree-node .lancer-node-dot { top: 13px; }
+@media (pointer: coarse), (max-width: 640px) { .lancer-tree-node > button:first-of-type, .lancer-turn-heading > button, .lancer-process-toggle, .lancer-earlier-turns { min-height: 44px; } .lancer-tree-node .lancer-node-dot { top: 19px; } .lancer-turn-heading .lancer-node-dot { top: 19px; } }
 .lancer-node-error > button:first-of-type { border-style: dashed; border-color: var(--accent); }
 .lancer-workbench [data-workbench-running-target=true] { position: relative; border-radius: 12px; }
 .lancer-execution-border { border-radius: inherit; }

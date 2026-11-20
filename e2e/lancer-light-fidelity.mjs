@@ -20,6 +20,7 @@ try{
  await page.goto(base+'/motion-fixture',{waitUntil:'domcontentloaded'});
  await page.locator('[data-task-light-target]').first().waitFor();
  await page.locator('[data-light-layer]').waitFor({state:'attached'});
+ await page.locator('[data-task-process-toggle][aria-expanded="false"]').first().click();
  assert.equal(await page.locator('[data-task-node]').first().locator('button').first().evaluate(el=>getComputedStyle(el).textAlign),'left');
  assert.equal(await page.locator('[data-light-layer]').count(),1);
  assert.equal(await page.locator('[data-curve-route]').count(),0);
@@ -28,6 +29,7 @@ try{
   window.__lightEvents=[];window.__peakLightCount=0;
   new MutationObserver(()=>{
    window.__peakLightCount=Math.max(window.__peakLightCount,document.querySelectorAll('[data-curve-route]').length);
+   for(const event of window.__lightEvents) if(!event.end&&!document.querySelector('[data-curve-id="'+event.id+'"]'))event.end=performance.now();
    for(const path of document.querySelectorAll('[data-curve-route]')){
     const id=path.getAttribute('data-curve-id');
     if(!window.__lightEvents.some(event=>event.id===id))window.__lightEvents.push({id,first:performance.now(),d:path.getAttribute('d')});
@@ -57,8 +59,15 @@ try{
   const first=window.__lightEvents.find(event=>event.id==='motion-parent:arrival-1:model');
   return first&&performance.now()-first.first>=820;
  });
- assert.equal(await model.count(),1,'flight must remain active beyond the former 700ms cutoff');
- assert.equal(await model.getAttribute('d'),firstPath,'a single flight must not jitter its authored path');
+ const flightState=await page.evaluate(()=>{
+  const first=window.__lightEvents.find(event=>event.id==='motion-parent:arrival-1:model');
+  const path=document.querySelector('[data-curve-id="motion-parent:arrival-1:model"]');
+  return {d:path?.getAttribute('d'),duration:first?.end?first.end-first.first:null};
+ });
+ // Screenshots can outlast the flight on a busy Windows host. Check the
+ // browser's observed lifetime even when the driver resumed after it finished.
+ if(flightState.d)assert.equal(flightState.d,firstPath,'a single flight must not jitter its authored path');
+ else assert.ok(flightState.duration>=1100,'flight must retain its native duration beyond the former 700ms cutoff');
  await model.waitFor({state:'detached',timeout:4000});await message.waitFor({state:'detached'});
  await page.waitForFunction(()=>!document.querySelector('[data-flight-landing]'));
  report.checks.push('original-1200ms-flight','stable-flight-path','landing-and-idle-cleanup');

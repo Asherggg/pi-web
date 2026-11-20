@@ -23,6 +23,7 @@ const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message)
 const report={passed:false,fixtureBacked:true,checks:[],errors,modelRequests:0};
 try{
  await page.goto(base+'/graph-motion');await page.locator('[data-task-node]').first().waitFor();await page.locator('[data-light-layer]').waitFor({state:'attached'});
+ await page.locator('[data-task-process-toggle][aria-expanded="false"]').click();
  const target=page.locator('[data-task-node="'+id+':history-5"] button').first();
  await target.focus();await page.locator('.lancer-tree-scroll').evaluate(el=>el.scrollTop=180);
  const initialScroll=await page.locator('.lancer-tree-scroll').evaluate(el=>el.scrollTop);
@@ -40,6 +41,7 @@ try{
  assert.equal(await target.evaluate(el=>document.activeElement===el),true);
  assert.equal(await page.locator('.lancer-tree-scroll').evaluate(el=>el.scrollTop),initialScroll);
  report.checks.push('refresh-retains-node-dom-scroll-and-focus','event-refreshes-coalesce');
+ await page.locator('[data-task-jump-latest]').click();
  graph={...graph,lanes:[{...graph.lanes[0],nodes:[...graph.lanes[0].nodes,node('late-entry')]}]};
  await page.getByRole('button',{name:'Refresh graph',exact:true}).click();
  const model=page.locator('[data-curve-id="'+id+':late-entry:model"]');const message=page.locator('[data-curve-id="'+id+':late-entry:message"]');

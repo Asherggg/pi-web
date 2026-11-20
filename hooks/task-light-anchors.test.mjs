@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createJiti } from 'jiti';
 const jiti=createJiti(import.meta.url);
-const { taskLaneColor, collectNewLightNodes, revealTaskTarget, visibleTaskAnchor }=await jiti.import('./task-light-anchors.ts');
+const { taskLaneColor, collectNewLightNodes, revealTaskTarget, taskTargetSelector, visibleTaskAnchor }=await jiti.import('./task-light-anchors.ts');
 const rect=(left=0,top=0,width=20,height=20)=>({left,top,right:left+width,bottom:top+height,width,height});
 function graph(nodes){return {sessionId:'parent',lanes:[{session:{id:'parent'},nodes}],running:[],edges:[],truncated:false};}
 test('session colors stay stable independently of focus and lane ordering',()=>{
@@ -31,6 +31,20 @@ test('following a target scrolls only the work tree, not the chat or page',()=>{
  const tree={scrollTop:30,scrollLeft:10,getBoundingClientRect:()=>rect(0,0,200,200)};
  const target={closest:selector=>selector==='.lancer-tree-scroll'?tree:null,getBoundingClientRect:()=>rect(350,400,10,10),scrollIntoView:()=>assert.fail('must not scroll ancestors')};
  revealTaskTarget(target);assert.equal(tree.scrollTop,250);assert.equal(tree.scrollLeft,180);
+});
+test('explicit folds resolve only their recorded native owner, and an unregistered ID stays absent',t=>{
+ const old=globalThis.CSS;globalThis.CSS={escape:value=>value};t.after(()=>{globalThis.CSS=old;});
+ const mapped={dataset:{taskAnchorId:'turn:session:request'}};
+ const root={querySelector:selector=>selector==='[data-task-anchor-for="session:result"]'?mapped:null};
+ assert.equal(taskTargetSelector(root,'session:result'),'[data-task-light-target="turn:session:request"]');
+ assert.equal(taskTargetSelector(root,'missing'),'[data-task-light-target="missing"]');
+ root.querySelector=selector=>selector==='[data-task-light-target="session:result"]'?{}:mapped;
+ assert.equal(taskTargetSelector(root,'session:result'),'[data-task-light-target="session:result"]');
+});
+test('a reader who leaves the latest row is never pulled back by a flight',()=>{
+ const tree={dataset:{taskFollow:'false'},scrollTop:100,scrollLeft:0};
+ const target={closest:()=>tree,getBoundingClientRect:()=>assert.fail('do not measure or scroll a paused tree')};
+ revealTaskTarget(target);assert.equal(tree.scrollTop,100);assert.equal(tree.scrollLeft,0);
 });
 test('hidden and clipped bubbles are not substituted with nearby anchors',t=>{
  const old=globalThis.getComputedStyle;globalThis.getComputedStyle=element=>({visibility:element.hidden?'hidden':'visible'});t.after(()=>{globalThis.getComputedStyle=old;});

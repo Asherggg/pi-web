@@ -37,7 +37,7 @@ try {
     });
     assert.ok(measured.panelWidth >= 448, `${scope}: tree panel must retain the Lancer trajectory width`);
     assert.ok(measured.laneWidths.every((width) => width >= 220), `${scope}: lane columns became too narrow`);
-    assert.ok(measured.nodeHeight >= 40, `${scope}: task nodes need a readable hit area`);
+    assert.ok(measured.nodeHeight >= 32, `${scope}: compact task nodes need a readable hit area`);
     assert.equal(measured.pageOverflowX, false, `${scope}: page must not overflow horizontally`);
     if (scope === "project") assert.equal(measured.contentOverflowX, true, "project lanes scroll inside the tree rather than compressing");
     await page.screenshot({ path: resolve(out, `${scope}-1440.png`) });

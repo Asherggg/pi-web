@@ -21,7 +21,9 @@ const report={passed:false,fixtureBacked:true,modelRequests:0,checks:[],errors};
 const measure=()=>page.evaluate(()=>{
  const lanes=document.querySelector('.lancer-lanes');const box=lanes.getBoundingClientRect();
  const centre=(nodeId)=>{
-  const dot=document.querySelector('[data-task-node="'+nodeId+'"] [data-task-light-target]');
+  const exact=document.querySelector('[data-task-light-target="'+nodeId+'"]');
+  const id=document.querySelector('[data-task-anchor-for="'+nodeId+'"]')?.dataset.taskAnchorId??nodeId;
+  const dot=exact??document.querySelector('[data-task-light-target="'+id+'"]');
   if(!dot)return null;const rect=dot.getBoundingClientRect();
   return [rect.left+rect.width/2-box.left,rect.top+rect.height/2-box.top];
  };
@@ -34,8 +36,10 @@ const measure=()=>page.evaluate(()=>{
 try{
  await page.goto(base+'/motion-fixture',{waitUntil:'domcontentloaded'});
  await page.locator('[data-task-node="motion-parent:merged"]').waitFor();
+ await page.locator('[data-task-process-toggle]').first().click();
  await page.locator('.lancer-lineage-overlay').waitFor({state:'attached'});
  await page.locator('[data-task-tree-edge]').waitFor({state:'attached'});
+ await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
  assert.equal(await page.locator('.lancer-lineage-overlay').evaluate(el=>getComputedStyle(el).pointerEvents),'none','the overlay must never take pointer events from the tree');
  assert.equal(await page.locator('[data-task-edge]').count(),0,'no dispatch/return edge exists in this fixture');
  const edges=await measure();

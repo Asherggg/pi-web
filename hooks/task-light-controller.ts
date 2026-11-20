@@ -1,6 +1,6 @@
 import type { LightLayer } from "@/lib/vendor/lancer-light-ui/light-layer";
 import type { TaskGraph, TaskNode } from "@/lib/workbench/graph";
-import { collectNewLightNodes, revealTaskTarget, taskLaneColor, visibleTaskAnchor } from "./task-light-anchors";
+import { collectNewLightNodes, revealTaskTarget, taskLaneColor, taskTargetSelector, visibleTaskAnchor } from "./task-light-anchors";
 
 const MAX_FLIGHTS = 32;
 const MAX_PENDING_EVENTS = 64;
@@ -28,7 +28,7 @@ export function createTaskLightController(root: HTMLElement, layer: LightLayer, 
     if (destroyed || root.ownerDocument.hidden) return;
     for (const [id, job] of pending) {
       if (performance.now() - job.since >= PENDING_SOURCE_MS) { pending.delete(id); continue; }
-      const targetSelector = `[data-task-light-target="${CSS.escape(job.node.id)}"]`;
+      const targetSelector = taskTargetSelector(root, job.node.id);
       const target = root.querySelector<HTMLElement>(targetSelector);
       if (!target) continue;
       if (!job.revealed) { revealTaskTarget(target); job.revealed = true; }
@@ -46,7 +46,7 @@ export function createTaskLightController(root: HTMLElement, layer: LightLayer, 
         const flight = layer.emit({
           id: `${id}:${kind}`,
           source: () => visibleTaskAnchor(root, selector),
-          target: () => visibleTaskAnchor(root, targetSelector),
+          target: () => visibleTaskAnchor(root, taskTargetSelector(root, job.node.id)),
           color: taskLaneColor(job.node.sessionId),
           sourceKind: kind,
           // Native default: 1200ms. Anchor callbacks also cancel flights clipped later.

@@ -1,14 +1,14 @@
 "use client";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { TaskLaneView } from "./TaskLaneView";
+import { taskTurns } from "@/lib/workbench/task-tree-view";
 import { TaskLineageOverlay } from "./TaskLineageOverlay";
 import { TurnSnapshotPanel } from "./TurnSnapshotPanel";
 import type { SessionInfo } from "@/lib/types";
-import { isHiddenRelation } from "@/lib/session-family";
 import type { TaskGraph, TaskLane, TaskNode, TaskScope } from "@/lib/workbench/graph";
 import type { ReportAdoptionStatus } from "@/lib/workbench/workflow";
 import type { ReportEvidence } from "@/lib/workbench/report-evidence";
 import { useI18n } from "@/hooks/useI18n";
-import { taskLaneColor } from "@/hooks/task-light-anchors";
 import "@/lib/vendor/lancer-light-ui/running-border.css";
 
 interface ReviewTarget { parentSessionId: string; childSessionId: string; evidence: ReportEvidence; revision: number }
@@ -20,6 +20,13 @@ export function TaskTreePanel({ graph, loading, error, scope, onScope, onRefresh
 }) {
   const { t } = useI18n();
   const lanesRef = useRef<HTMLDivElement | null>(null);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const [following, setFollowing] = useState(true);
+  const [filesExpanded, setFilesExpanded] = useState(false);
+  const counts = useMemo(() => {
+    const turns = graph?.lanes.flatMap(taskTurns) ?? [];
+    return { turns: turns.length, tools: turns.reduce((sum, turn) => sum + turn.toolCount, 0), files: new Set(graph?.lanes.flatMap((lane) => lane.nodes.filter((node) => node.filePath).map((node) => node.filePath))).size };
+  }, [graph]);
   const [actionError, setActionError] = useState<string | null>(null);
   const [review, setReview] = useState<ReviewTarget | null>(null);
   const [reviewNote, setReviewNote] = useState("");
@@ -82,7 +89,12 @@ export function TaskTreePanel({ graph, loading, error, scope, onScope, onRefresh
     {error && <p role="alert">{t(`workbench.${error}`)} <button onClick={onRefresh}>{t("workbench.retry")}</button></p>}
     {graph?.reviewsError && <p role="alert">{t("workbench.reviewsCorrupt")}</p>}
     {loading && !graph && <p role="status">{t("chat.loadingSession")}</p>}
-    <div className="lancer-tree-scroll">
+    <div className="lancer-tree-summary" data-task-counts><span>{t("workbench.tree.counts", counts)}</span>{!following && <button type="button" data-task-jump-latest onClick={() => { const scroll = scrollRef.current; if (scroll) { scroll.dataset.taskFollow = "true"; scroll.scrollTop = scroll.scrollHeight; } setFollowing(true); }}>{t("workbench.tree.latest")}</button>}</div>
+    <div className="lancer-tree-scroll" ref={scrollRef} data-task-follow={following} onScroll={(event) => {
+      const scroll = event.currentTarget;
+      const nearEnd = scroll.scrollHeight - scroll.clientHeight - scroll.scrollTop < 64;
+      scroll.dataset.taskFollow = String(nearEnd); setFollowing(nearEnd);
+    }}>
       {graph?.edges?.length ? <section className="lancer-lineage" aria-label={t("workbench.lineage")}><h3>{t("workbench.lineage")}</h3>{graph.edges.map((edge) => {
         const sourceSession = graph.lanes.find((lane) => lane.session.id === edge.parentSessionId)?.session;
         const targetSession = graph.lanes.find((lane) => lane.session.id === edge.childSessionId)?.session;
@@ -113,32 +125,12 @@ export function TaskTreePanel({ graph, loading, error, scope, onScope, onRefresh
       </section>}
       <div className="lancer-lanes" ref={lanesRef}>
         {graph?.edges?.length || graph?.lanes.some((lane) => lane.nodes.some((node) => node.parentId)) ? <TaskLineageOverlay rootRef={lanesRef} lanes={graph.lanes} edges={graph.edges} /> : null}
-        {graph?.lanes.map((lane) => {
-        const session = lane.session;
-        const state = graph.running.includes(session.id) ? "running" : session.relation?.kind === "subagent" ? session.relation.status : "idle";
-        const known = new Set(lane.nodes.map((node) => node.id));
-        const children = new Map<string, number>();
-        for (const node of lane.nodes) if (node.parentId) children.set(node.parentId, (children.get(node.parentId) ?? 0) + 1);
-        const depths = new Map<string, number>();
-        return <section key={session.id} className="lancer-lane" data-running={state === "running"} style={{ "--lancer-lane-color": taskLaneColor(session.id) } as React.CSSProperties}>
-          <div className="lancer-lane-heading">{state === "running" && <svg className="light-running-border" style={{ "--light-color": taskLaneColor(session.id) } as React.CSSProperties} aria-hidden="true"><rect x="1" y="1" width="calc(100% - 2px)" height="calc(100% - 2px)" rx="5" pathLength="100" /></svg>}<strong title={session.name || session.firstMessage}>{session.name || session.firstMessage || session.id}</strong><small>{t(`workbench.${state}`)}</small>{lane.model && <span className="lancer-lane-model-source" title={lane.model} data-workbench-lane-model={session.id}><span className="lancer-model-glyph" aria-hidden="true" />{lane.model}</span>}{session.parentSessionId && <small title={session.parentSessionId}>{t("workbench.parent")}: {graph.lanes.find((item) => item.session.id === session.parentSessionId)?.session.name || session.parentSessionId.slice(0, 8)}</small>}</div>
-          {lane.error && <p role="alert">{t(`workbench.${lane.error}`)} <button onClick={onRefresh}>{t("workbench.retry")}</button></p>}
-          {!lane.nodes.length && !lane.error && <p className="lancer-help">{t("workbench.empty")}</p>}
-          {lane.nodes.map((node) => {
-            const depth = node.parentId && known.has(node.parentId) ? Math.min(4, (depths.get(node.parentId) ?? 0) + ((children.get(node.parentId) ?? 0) > 1 ? 1 : 0)) : 0;
-            depths.set(node.id, depth);
-            return <div key={node.id} data-task-node={node.id} className={`lancer-tree-node lancer-node-${node.kind}${node.error ? " lancer-node-error" : ""}${node.active ? " lancer-node-active" : ""}`} style={{ marginLeft: depth * 14 }}>
-              <span className={`lancer-node-dot lancer-node-dot-${node.kind}`} data-task-light-target={node.id} aria-hidden="true" />
-              <button type="button" onClick={() => openNode(node, session)} title={node.text}><span className="lancer-node-kind">{t(`workbench.${node.kind}`)}{node.error ? ` · ${t("workbench.failed")}` : ""}</span><span className="lancer-node-text">{node.text}</span></button>
-              {node.kind === "report" && node.reviewable && <button className={`lancer-review-button${node.staleReview ? " is-stale" : ""}`} type="button" onClick={() => { void beginReview(node, lane); }}>{t(`workbench.review.${node.staleReview ? "stale" : node.adoption?.status ?? "pending"}`)}</button>}
-              {node.kind === "user" && onFork && !isHiddenRelation(session.relation) && <button className="lancer-fork" title={t("workbench.fork")} aria-label={t("workbench.fork")} onClick={() => { void onFork(session, node.entryId).catch((cause: unknown) => setActionError(cause instanceof Error ? cause.message : String(cause))); }}>⑂</button>}
-            </div>;
-          })}
-        </section>;
-      })}</div>
+        {graph?.lanes.map((lane) => <TaskLaneView key={`${scope}:${lane.session.id}`} lane={lane} running={graph.running.includes(lane.session.id)}
+          onOpen={(node) => openNode(node, lane.session)} onReview={(node) => { void beginReview(node, lane); }} onRefresh={onRefresh}
+          onFork={onFork ? (node) => { void onFork(lane.session, node.entryId).catch((cause: unknown) => setActionError(cause instanceof Error ? cause.message : String(cause))); } : undefined} />)}</div>
       {graph?.truncated && <p className="lancer-help">{t("workbench.truncated")}</p>}
       {graph && <TurnSnapshotPanel key={graph.sessionId} sessionId={graph.sessionId} running={graph.running.includes(graph.sessionId)} />}
-      <section className="lancer-deliverables"><h3>{t("workbench.files")}</h3>{!files.length && <p className="lancer-help">{t("workbench.noFiles")}</p>}{[...fileMap.values()].map((file) => <button type="button" key={file.filePath} onClick={() => onOpenFile?.(file.filePath!)} title={file.filePath}>{file.filePath?.replace(/\\/g, "/").split("/").pop()}</button>)}</section>
+      <section className="lancer-deliverables"><h3>{t("workbench.files")}</h3>{!files.length && <p className="lancer-help">{t("workbench.noFiles")}</p>}{[...fileMap.values()].slice(0, filesExpanded ? fileMap.size : 5).map((file) => <button type="button" key={file.filePath} onClick={() => onOpenFile?.(file.filePath!)} title={file.filePath}>{file.filePath?.replace(/\\/g, "/").split("/").pop()}</button>)}{fileMap.size > 5 && <button type="button" data-task-delivery-toggle aria-expanded={filesExpanded} onClick={() => setFilesExpanded((value) => !value)}>{t(filesExpanded ? "workbench.tree.hideFiles" : "workbench.tree.showFiles", { count: fileMap.size - 5 })}</button>}</section>
     </div>
   </aside>;
 }
